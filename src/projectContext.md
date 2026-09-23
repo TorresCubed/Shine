@@ -22,9 +22,14 @@ Levers/buttons have hidden, undiscoverable-until-tried effects; mirror angles ha
 
 Current implementation state (canvas prototype):
 
-Working visibility-polygon raycasting (computeVisibilityPolygon) with wall + mirror occlusion
-Mirror reflection via virtual-light technique (reflectPointAcrossLine, computeMirrorPolygon) — reflects the light point across the mirror line, casts from that virtual origin
+Forward ray tracing (rayTracer.ts / castLight) replaced the visibility-polygon + virtual-light approach (lightLogic.ts / mirrorLogic.ts, now unused). Rays leave the light and bounce off mirrors until they hit a wall or run out of range/bounces. Neighbouring rays form strips, grouped by the chain of mirrors they bounced through; each group has one virtual source, which the radial falloff is centred on. Rays are budgeted (120 candle / 24 flashlight base rays) and bisected adaptively only where neighbours hit different surfaces. The frame rate is capped at TARGET_FPS (30), and a perf readout is drawn in the top-left corner.
+(Superseded) Mirror reflection via virtual-light technique (reflectPointAcrossLine, computeMirrorPolygon) — reflects the light point across the mirror line, casts from that virtual origin
 Persistent "explored" canvas (fog-of-war memory, never cleared) layered under a live "currently lit" radial-falloff layer
 Just fixed: mirror-reflected light wasn't fading with distance — the mirror polygon mask was flat/opaque instead of multiplied by a radial falloff. Fix: run the falloff gradient centered on virtualLight per-mirror, in a per-mirror loop, since each mirror has its own virtual light position and combining all mirrors into one mask before applying falloff breaks this.
 Known unresolved item: multiple mirrors will additively double-brighten in overlapping reflected regions once more than one mirror exists — flagged but not yet solved ('lighter' vs 'source-over' blending decision deferred).
 Recent TS fixes: type-only import needed for Mirror/Segment interfaces under verbatimModuleSyntax; a malformed mixed function-declaration/arrow-function syntax on getMirrorNormal caused an implicit-any error — resolved by using a plain function declaration.
+
+
+
+
+### Questions

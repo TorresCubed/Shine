@@ -10,6 +10,16 @@ export const polygonPath = (targetCtx: CanvasRenderingContext2D, points: { x: nu
   targetCtx.closePath();
 }
 
+// Same as polygonPath, but several polygons as subpaths of one path, so they fill in a single call.
+export const polygonsPath = (targetCtx: CanvasRenderingContext2D, polygons: { x: number; y: number }[][]) => {
+  targetCtx.beginPath();
+  for (const points of polygons) {
+    targetCtx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) targetCtx.lineTo(points[i].x, points[i].y);
+    targetCtx.closePath();
+  }
+}
+
 export const reflectPointAcrossLine = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
   const dx = b.x - a.x, dy = b.y - a.y;
   const lenSq = dx * dx + dy * dy;

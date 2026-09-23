@@ -1,10 +1,20 @@
-import { reflectPointAcrossLine, polygonPath } from "./util";
+import { polygonsPath } from "./util";
 import { tryMove, updateVisual } from "./playerLogic";
-import { getBlockingSegments } from "./wallsLogic";
-import { computeVisibilityPolygon } from "./lightLogic";
-import { computeMirrorPolygon } from "./mirrorLogic";
-import { player, walls, LIGHT_RADIUS, mirrors, GRID_SIZE } from "./consts";
+import { getScene } from "./wallsLogic";
+import { castLight } from "./rayTracer";
+import {
+  player, walls, CANDLE_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE_DEGREES, MAX_MIRROR_BOUNCES, lightState, mirrors, GRID_SIZE,
+  TARGET_FPS, CANDLE_RAY_COUNT, FLASHLIGHT_RAY_COUNT,
+} from "./consts";
 import { canvas, ctx, exploredCanvas, exploredCtx, reflectionCanvas, reflectionCtx, dimLayer, dimCtx } from "./main";
+
+const FLASHLIGHT_CONE = FLASHLIGHT_CONE_DEGREES * Math.PI / 180;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
+let lastFrameTime = -Infinity;
+let fpsWindowStart = 0;
+let fpsFrames = 0;
+let fps = 0;
 
 // Built once: a 2x2-cell tile of the checkerboard, repeated as a fillStyle. Drawing the floor
 // used to mean one fillRect per grid cell (thousands per frame across a full window, redone up
@@ -42,34 +52,42 @@ const drawDimFloor = (targetCtx: CanvasRenderingContext2D) => {
   targetCtx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-// Every point in a light/mirror polygon is, by construction, within LIGHT_RADIUS of its origin
-// (light or virtualLight) — the raycasting never produces anything farther out. So instead of
-// clearing/filling/compositing the full window for an effect that only ever reaches a ~500px
-// circle, clamp to a square around the origin and do the same work there.
-const boundsAround = (origin: { x: number; y: number }, radius: number) => {
-  const x = Math.max(0, Math.floor(origin.x - radius));
-  const y = Math.max(0, Math.floor(origin.y - radius));
-  const right = Math.min(canvas.width, Math.ceil(origin.x + radius));
-  const bottom = Math.min(canvas.height, Math.ceil(origin.y + radius));
+// Instead of clearing/filling/compositing the full window for an effect that only ever lights a
+// small area, clamp to the polygon's own bounding box. A square around the origin would work for
+// the candle (a full circle), but not the flashlight — its cone only lights a thin 20°-wide wedge
+// of its ~750px range, and a symmetric square around the origin would cover the other 340° for
+// nothing, undoing most of the point of bounding it in the first place.
+const boundsFromPolygons = (polygons: { x: number; y: number }[][]) => {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const polygon of polygons) for (const p of polygon) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const x = Math.max(0, Math.floor(minX));
+  const y = Math.max(0, Math.floor(minY));
+  const right = Math.min(canvas.width, Math.ceil(maxX));
+  const bottom = Math.min(canvas.height, Math.ceil(maxY));
   return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
 }
 
-// Draws the floor into dimLayer, masked to `polygon`, faded by a radial falloff centered on `origin`.
-// Shared by the player's direct light and each mirror's reflected (virtual-light) cone — the mask
+// Draws the floor into dimLayer, masked to `polygons`, faded by a radial falloff centered on `origin`.
+// Shared by the player's direct light and each mirror chain's reflected light — the mask
 // itself carries the shape, so nothing drawing from dimLayer afterward needs its own ctx.clip().
 // Returns the bounds used, so the caller can composite back using the same rect.
-const drawFalloffMaskedFloor = (polygon: { x: number; y: number }[], origin: { x: number; y: number }) => {
-  const b = boundsAround(origin, LIGHT_RADIUS);
+const drawFalloffMaskedFloor = (polygons: { x: number; y: number }[][], origin: { x: number; y: number }, radius: number) => {
+  const b = boundsFromPolygons(polygons);
   dimCtx.clearRect(b.x, b.y, b.w, b.h);
   drawFloor(dimCtx, b.x, b.y, b.w, b.h);
 
   dimCtx.globalCompositeOperation = 'destination-in';
-  polygonPath(dimCtx, polygon);
+  polygonsPath(dimCtx, polygons);
   dimCtx.fill();
   dimCtx.globalCompositeOperation = 'source-over';
 
   dimCtx.globalCompositeOperation = 'destination-in';
-  const falloff = dimCtx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, LIGHT_RADIUS);
+  const falloff = dimCtx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
   falloff.addColorStop(0, 'rgba(255,255,255,1)');
   falloff.addColorStop(0.4, 'rgba(255,255,255,0.9)');
   falloff.addColorStop(1, 'rgba(255,255,255,0)');
@@ -90,17 +108,39 @@ const drawReflectionTint = (b: { x: number; y: number; w: number; h: number }) =
   reflectionCtx.globalCompositeOperation = 'source-over';
 }
 
-export const draw = (now: number = 0) => {
+export const draw = (now: number) => {
+  requestAnimationFrame(draw);
+
+  // Frame cap: rAF still fires at the display rate, we just skip frames until the interval has
+  // passed. The 1ms slack stops rAF timing jitter from occasionally skipping a frame we wanted.
+  const elapsed = now - lastFrameTime;
+  if (elapsed < FRAME_INTERVAL - 1) return;
+  const dt = Math.min(elapsed, 100) / 1000; // clamped so a backgrounded tab doesn't teleport the player
+  lastFrameTime = now;
+
+  fpsFrames++;
+  if (now - fpsWindowStart >= 1000) {
+    fps = Math.round(fpsFrames * 1000 / (now - fpsWindowStart));
+    fpsFrames = 0;
+    fpsWindowStart = now;
+  }
+
   tryMove(now);
-  updateVisual();
+  updateVisual(dt);
 
   const light = { x: player.visualX, y: player.visualY }
-  const segments = getBlockingSegments(walls, mirrors);
-  const points = computeVisibilityPolygon(light, segments, LIGHT_RADIUS);
+  const scene = getScene(walls, mirrors);
+
+  const isFlashlight = lightState.mode === 'flashlight';
+  const radius = isFlashlight ? FLASHLIGHT_RANGE : CANDLE_RADIUS;
+  const { groups, rayCount } = isFlashlight
+    ? castLight(light, player.facingAngle - FLASHLIGHT_CONE / 2, FLASHLIGHT_CONE, FLASHLIGHT_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES)
+    : castLight(light, 0, Math.PI * 2, CANDLE_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES);
+  const direct = groups[0].polys;
 
   // 1. Permanently record this frame's visible area into the "explored" canvas
   exploredCtx.fillStyle = 'white';
-  polygonPath(exploredCtx, points);
+  polygonsPath(exploredCtx, direct);
   exploredCtx.fill();
 
   // 2. Base darkness
@@ -119,27 +159,25 @@ export const draw = (now: number = 0) => {
   ctx.drawImage(dimLayer, 0, 0);
 
   // 4. Bright "currently lit" layer: floor, with radial falloff, masked to the live visibility polygon
-  const lightBounds = drawFalloffMaskedFloor(points, light);
+  const lightBounds = drawFalloffMaskedFloor(direct, light, radius);
   ctx.drawImage(dimLayer, lightBounds.x, lightBounds.y, lightBounds.w, lightBounds.h, lightBounds.x, lightBounds.y, lightBounds.w, lightBounds.h);
 
-  // 5. Per-mirror reflected light: same falloff-masked floor, cast from each mirror's virtual light.
-  // Unclipped by the direct-light polygon on purpose — this is what lets reflections land in areas
-  // the player can't directly see, which is the whole point of the mirror mechanic.
-  for (const m of mirrors) {
-    const poly = computeMirrorPolygon(light, m, segments, LIGHT_RADIUS);
-    if (!poly || poly.length < 3) continue;
-
-    const virtualLight = reflectPointAcrossLine(light, { x: m.x1, y: m.y1 }, { x: m.x2, y: m.y2 });
-
-    const b = drawFalloffMaskedFloor(poly, virtualLight);
+  // 5. Reflected light: one group per mirror chain the rays actually travelled, each rendered the
+  // same way as the direct light (falloff-masked floor + tint). The falloff is centred on the
+  // chain's virtual source with the light's full range as radius, so brightness tracks true path
+  // length and deeper bounces come out dimmer. The flashlight's cone carries through bounces
+  // naturally, because only rays inside the cone were ever cast.
+  for (let i = 1; i < groups.length; i++) {
+    const group = groups[i];
+    const b = drawFalloffMaskedFloor(group.polys, group.origin, radius);
     drawReflectionTint(b);
 
-    ctx.drawImage(dimLayer, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);         // faded floor for this mirror's reflection
-    ctx.drawImage(reflectionCanvas, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h); // tinted overlay for this mirror's reflection
+    ctx.drawImage(dimLayer, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);         // faded floor for this reflection
+    ctx.drawImage(reflectionCanvas, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h); // tinted overlay for this reflection
 
     // Keep exploredCtx as a flat mask — "ever seen" memory doesn't need falloff
     exploredCtx.fillStyle = 'white';
-    polygonPath(exploredCtx, poly);
+    polygonsPath(exploredCtx, group.polys);
     exploredCtx.fill();
   }
 
@@ -147,9 +185,9 @@ export const draw = (now: number = 0) => {
   // This one still needs its own clip: unlike the passes above, it isn't drawn from an
   // already-masked dimLayer, so without it the glow would bleed through walls.
   ctx.save();
-  polygonPath(ctx, points);
+  polygonsPath(ctx, direct);
   ctx.clip();
-  const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, LIGHT_RADIUS);
+  const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, radius);
   gradient.addColorStop(0, 'rgba(255, 220, 150, 0.5)');
   gradient.addColorStop(1, 'rgba(255, 220, 150, 0)');
   ctx.fillStyle = gradient;
@@ -174,5 +212,9 @@ export const draw = (now: number = 0) => {
     ctx.lineTo(m.x2, m.y2);
     ctx.stroke();
   }
-  requestAnimationFrame(draw);
+
+  // 9. Perf readout
+  ctx.fillStyle = '#0f0';
+  ctx.font = '12px monospace';
+  ctx.fillText(`${fps} fps · ${rayCount} rays · ${groups.length - 1} reflections`, 8, 16);
 }

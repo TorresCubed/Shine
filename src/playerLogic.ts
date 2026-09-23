@@ -4,11 +4,14 @@ player.visualX = player.gridX * GRID_SIZE + GRID_SIZE / 2;
 player.visualY = player.gridY * GRID_SIZE + GRID_SIZE / 2;
 
 
-export const updateVisual = () => {
+// `dt` in seconds. Scaled by frame time rather than a fixed per-frame step, so the glide speed
+// stays the same whatever the frame rate cap is.
+export const updateVisual = (dt: number) => {
   const targetX = player.gridX * GRID_SIZE + GRID_SIZE / 2;
   const targetY = player.gridY * GRID_SIZE + GRID_SIZE / 2;
-  player.visualX += (targetX - player.visualX) * (MOVE_SPEED / 60);
-  player.visualY += (targetY - player.visualY) * (MOVE_SPEED / 60);
+  const step = Math.min(1, MOVE_SPEED * dt);
+  player.visualX += (targetX - player.visualX) * step;
+  player.visualY += (targetY - player.visualY) * step;
 }
 
 const pointSegmentDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
@@ -45,6 +48,10 @@ export const tryMove = (now: number) => {
   else if (keysDown.has('d') || keysDown.has('arrowright')) dx = 1;
 
   if (dx === 0 && dy === 0) return;
+
+  // Update facing even if the move itself is blocked, so you can turn the flashlight toward
+  // a wall without needing to actually step into it.
+  player.facingAngle = Math.atan2(dy, dx);
 
   const newX = player.gridX + dx;
   const newY = player.gridY + dy;

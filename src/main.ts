@@ -1,4 +1,4 @@
-import { keysDown } from "./consts";
+import { keysDown, lightState } from "./consts";
 import { draw } from "./renderer";
 
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -27,9 +27,13 @@ export const resize = () => {
 }
 
 window.addEventListener('resize', resize);
-window.addEventListener('keydown', (e) => keysDown.add(e.key.toLowerCase()));
+window.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  keysDown.add(key);
+  if (key === 'f') lightState.mode = lightState.mode === 'candle' ? 'flashlight' : 'candle';
+});
 window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
 
 resize();
 
-draw();
+requestAnimationFrame(draw);
