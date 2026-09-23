@@ -18,7 +18,14 @@ export const FLASHLIGHT_RANGE = Math.round(45 * PX_PER_FOOT); // 45ft
 export const FLASHLIGHT_CONE_DEGREES = 20; // total width, not half-angle
 export const MAX_MIRROR_BOUNCES = 3; // backstop against runaway recursion between facing mirrors
 
-export const TARGET_FPS = 30; // capped low for now to get a baseline on the ray tracer's cost
+// Fog-of-war memory is stored at this fraction of screen resolution and upscaled with bilinear
+// smoothing, which softens its edges (lower = softer and cheaper, but blurrier shadow lines).
+export const FOG_MEMORY_SCALE = 0.35;
+// Shape of the fog memory's fade across the light's radius: higher holds full memory further out
+// before fading (2 = fades from the centre, 4 = ~half strength at 70% of radius, 8 = later still).
+export const FOG_FALLOFF_SHOULDER = 3;
+
+export const TARGET_FPS = 60; // capped low for now to get a baseline on the ray tracer's cost
 
 // Ray budget. Base rays are spread evenly across the light's arc; wherever two neighbours disagree
 // on what they hit (a shadow edge, a mirror edge — at any bounce depth), the gap between them is
