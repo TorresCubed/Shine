@@ -5,7 +5,7 @@ import { castLight } from "./rayTracer";
 import type { LightGroup } from "./rayTracer";
 import {
   player, walls, CANDLE_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE_DEGREES, MAX_MIRROR_BOUNCES, lightState, mirrors, GRID_SIZE,
-  TARGET_FPS, CANDLE_RAY_COUNT, FLASHLIGHT_RAY_COUNT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER,
+  TARGET_FPS, CANDLE_RAY_COUNT, FLASHLIGHT_RAY_COUNT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, start, goal, gameState, LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION,
 } from "./consts";
 import { canvas, ctx, exploredCanvas, exploredCtx, litLayer, litCtx, dimLayer, dimCtx } from "./main";
 
@@ -17,9 +17,8 @@ let fpsWindowStart = 0;
 let fpsFrames = 0;
 let fps = 0;
 
-// Built once: a 2x2-cell tile of the checkerboard, repeated as a fillStyle. Drawing the floor
-// used to mean one fillRect per grid cell (thousands per frame across a full window, redone up
-// to 3x/frame) — this collapses it to a single fillRect regardless of canvas or cell size.
+// Built once: a 2x2-cell tile of the checkerboard, repeated as a fillStyle, so the floor is a
+// single fillRect regardless of canvas or cell size.
 const floorTile = document.createElement('canvas');
 floorTile.width = GRID_SIZE * 2;
 floorTile.height = GRID_SIZE * 2;
@@ -31,9 +30,8 @@ floorTileCtx.fillStyle = 'blue';
 floorTileCtx.fillRect(GRID_SIZE, 0, GRID_SIZE, GRID_SIZE);
 floorTileCtx.fillRect(0, GRID_SIZE, GRID_SIZE, GRID_SIZE);
 
-// Same tile, pre-desaturated/darkened for the "remembered" fog layer — bakes in the same
-// grayscale(1) brightness(0.6) that used to run as a live CSS filter over the full canvas
-// every frame. The filter only ever runs once here, against a 2-cell tile.
+// Same tile, pre-desaturated/darkened for the "remembered" fog layer. The filter runs once here,
+// against a 2-cell tile, rather than over the full canvas every frame.
 const dimFloorTile = document.createElement('canvas');
 dimFloorTile.width = GRID_SIZE * 2;
 dimFloorTile.height = GRID_SIZE * 2;
@@ -48,15 +46,71 @@ const drawFloor = (targetCtx: CanvasRenderingContext2D, x: number, y: number, w:
   targetCtx.fillRect(x, y, w, h);
 }
 
-// The dim floor never changes, so it's drawn full-window once and only rebuilt on resize.
+// Start and goal markers are painted onto the floor itself, in both the lit and the remembered
+// floor, so they're hidden in darkness and show up exactly where the floor does.
+const drawFloorMarks = (targetCtx: CanvasRenderingContext2D, startColor: string, goalColor: string) => {
+  targetCtx.lineWidth = 3;
+
+  const sx = start.gridX * GRID_SIZE + GRID_SIZE / 2;
+  const sy = start.gridY * GRID_SIZE + GRID_SIZE / 2;
+  targetCtx.strokeStyle = startColor;
+  targetCtx.beginPath();
+  targetCtx.arc(sx, sy, GRID_SIZE * 0.35, 0, Math.PI * 2);
+  targetCtx.stroke();
+
+  const gx = goal.gridX * GRID_SIZE + GRID_SIZE / 2;
+  const gy = goal.gridY * GRID_SIZE + GRID_SIZE / 2;
+  const r = GRID_SIZE * 0.3;
+  targetCtx.strokeStyle = goalColor;
+  targetCtx.beginPath();
+  targetCtx.moveTo(gx, gy - r);
+  targetCtx.lineTo(gx + r, gy);
+  targetCtx.lineTo(gx, gy + r);
+  targetCtx.lineTo(gx - r, gy);
+  targetCtx.closePath();
+  targetCtx.stroke();
+}
+
+const WALL_LIT_COLOR = '#8c8272';
+const WALL_DIM_COLOR = '#4f4f4f'; // WALL_LIT_COLOR through the same grayscale + 0.6 brightness as the dim floor
+
+const wallsPath = (targetCtx: CanvasRenderingContext2D) => {
+  targetCtx.beginPath();
+  for (const w of walls) targetCtx.rect(w.x, w.y, w.w, w.h);
+}
+
+// Light polygons end exactly on the wall faces they hit. Stroking their outline, clipped to the
+// walls, paints a band WALL_LIGHT_PENETRATION px deep into just those faces, so walls show up
+// only where light actually reaches them. Clipping to a handful of rects is cheap, unlike
+// clipping to the many-strip light path.
+const strokeWallFaces = (targetCtx: CanvasRenderingContext2D, polygons: { x: number; y: number }[][], style: string | CanvasGradient) => {
+  targetCtx.save();
+  wallsPath(targetCtx);
+  targetCtx.clip();
+  targetCtx.strokeStyle = style;
+  targetCtx.lineWidth = WALL_LIGHT_PENETRATION * 2;
+  polygonsPath(targetCtx, polygons);
+  targetCtx.stroke();
+  targetCtx.restore();
+}
+
+// The dim floor only changes on resize or when a level with a different layout loads, so it's
+// drawn full-window once and cached until one of those changes.
 const dimFloorCanvas = document.createElement('canvas');
 const dimFloorCtx = dimFloorCanvas.getContext('2d')!;
+let dimFloorKey = '';
 const ensureDimFloor = () => {
-  if (dimFloorCanvas.width === canvas.width && dimFloorCanvas.height === canvas.height) return;
+  let key = `${canvas.width}x${canvas.height}:${start.gridX},${start.gridY}:${goal.gridX},${goal.gridY}`;
+  for (const w of walls) key += `:${w.x},${w.y},${w.w},${w.h}`;
+  if (key === dimFloorKey) return;
+  dimFloorKey = key;
   dimFloorCanvas.width = canvas.width;
   dimFloorCanvas.height = canvas.height;
   dimFloorCtx.fillStyle = dimFloorCtx.createPattern(dimFloorTile, 'repeat')!;
   dimFloorCtx.fillRect(0, 0, canvas.width, canvas.height);
+  drawFloorMarks(dimFloorCtx, '#6e6e6e', '#777'); // grayscale, to match the remembered floor
+  dimFloorCtx.fillStyle = WALL_DIM_COLOR;
+  for (const w of walls) dimFloorCtx.fillRect(w.x, w.y, w.w, w.h);
 }
 
 // Memory strength vs. fraction of the light's radius: (1 - t^k)^2. Smooth everywhere, exactly 0 at
@@ -83,6 +137,7 @@ const rememberLight = (groups: LightGroup[], radius: number) => {
     exploredCtx.fillStyle = gradient;
     polygonsPath(exploredCtx, g.polys);
     exploredCtx.fill();
+    strokeWallFaces(exploredCtx, g.polys, gradient);
   }
   exploredCtx.globalCompositeOperation = 'source-over';
   exploredCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -92,7 +147,8 @@ const rememberLight = (groups: LightGroup[], radius: number) => {
 // small area, clamp to the polygon's own bounding box. A square around the origin would work for
 // the candle (a full circle), but not the flashlight — its cone only lights a thin 20°-wide wedge
 // of its ~750px range, and a symmetric square around the origin would cover the other 340° for
-// nothing, undoing most of the point of bounding it in the first place.
+// nothing, undoing most of the point of bounding it in the first place. Padded by the wall
+// penetration, since the wall-face band reaches that far past the polygon.
 const boundsFromPolygons = (polygons: { x: number; y: number }[][]) => {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const polygon of polygons) for (const p of polygon) {
@@ -101,10 +157,11 @@ const boundsFromPolygons = (polygons: { x: number; y: number }[][]) => {
     if (p.y < minY) minY = p.y;
     if (p.y > maxY) maxY = p.y;
   }
-  const x = Math.max(0, Math.floor(minX));
-  const y = Math.max(0, Math.floor(minY));
-  const right = Math.min(canvas.width, Math.ceil(maxX));
-  const bottom = Math.min(canvas.height, Math.ceil(maxY));
+  const pad = WALL_LIGHT_PENETRATION;
+  const x = Math.max(0, Math.floor(minX - pad));
+  const y = Math.max(0, Math.floor(minY - pad));
+  const right = Math.min(canvas.width, Math.ceil(maxX + pad));
+  const bottom = Math.min(canvas.height, Math.ceil(maxY + pad));
   return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
 }
 
@@ -123,6 +180,7 @@ const unionBounds = (a: Bounds, b: Bounds): Bounds => {
 const drawLitRegion = (polygons: { x: number; y: number }[][], origin: { x: number; y: number }, radius: number, b: Bounds) => {
   dimCtx.clearRect(b.x, b.y, b.w, b.h);
   drawFloor(dimCtx, b.x, b.y, b.w, b.h);
+  drawFloorMarks(dimCtx, '#e8e0d0', '#f5c542');
 
   dimCtx.globalCompositeOperation = 'lighter';
   dimCtx.fillStyle = 'rgba(255, 220, 150, 0.5)';
@@ -132,6 +190,10 @@ const drawLitRegion = (polygons: { x: number; y: number }[][], origin: { x: numb
   polygonsPath(dimCtx, polygons);
   dimCtx.fill();
 
+  dimCtx.globalCompositeOperation = 'source-over';
+  strokeWallFaces(dimCtx, polygons, WALL_LIT_COLOR);
+
+  dimCtx.globalCompositeOperation = 'destination-in';
   const falloff = dimCtx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
   falloff.addColorStop(0, 'rgba(255,255,255,1)');
   falloff.addColorStop(0.4, 'rgba(255,255,255,0.9)');
@@ -165,7 +227,10 @@ export const draw = (now: number) => {
   const scene = getScene(walls, mirrors);
 
   const isFlashlight = lightState.mode === 'flashlight';
-  const radius = isFlashlight ? FLASHLIGHT_RANGE : CANDLE_RADIUS;
+  // Light ignites on level start: radius eases out from nothing to full over LIGHT_IGNITE_MS.
+  const ignite = Math.min(1, Math.max(0, (now - gameState.startedAt) / LIGHT_IGNITE_MS));
+  const fullRadius = isFlashlight ? FLASHLIGHT_RANGE : CANDLE_RADIUS;
+  const radius = Math.max(1, fullRadius * (1 - (1 - ignite) ** 3));
   const { groups, rayCount } = isFlashlight
     ? castLight(light, player.facingAngle - FLASHLIGHT_CONE / 2, FLASHLIGHT_CONE, FLASHLIGHT_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES)
     : castLight(light, 0, Math.PI * 2, CANDLE_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES);
@@ -185,11 +250,10 @@ export const draw = (now: number) => {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.globalCompositeOperation = 'source-over';
 
-  // 4. Every currently-lit region (direct light, then one per mirror chain) is accumulated
-  // additively ('lighter') onto litLayer, since overlapping light adds. Stacking translucent
-  // layers straight onto ctx with source-over compounded overlaps unrealistically and depended on
-  // draw order. Each reflection's falloff is centred on its chain's virtual source, so brightness
-  // tracks true path length and deeper bounces come out dimmer.
+  // 3. Every currently-lit region (direct light, then one per mirror chain) is accumulated
+  // additively ('lighter') onto litLayer, since overlapping light adds, and doing so makes the
+  // result independent of draw order. Each reflection's falloff is centred on its chain's virtual
+  // source, so brightness tracks true path length and deeper bounces come out dimmer.
   const bounds = groups.map(g => boundsFromPolygons(g.polys));
   const litBounds = bounds.reduce(unionBounds);
   litCtx.clearRect(litBounds.x, litBounds.y, litBounds.w, litBounds.h);
@@ -203,19 +267,16 @@ export const draw = (now: number) => {
 
   litCtx.globalCompositeOperation = 'source-over';
 
-  // 5. Composite the accumulated lit layer onto the main canvas in one pass.
+  // 4. Composite the accumulated lit layer onto the main canvas in one pass.
   ctx.drawImage(litLayer, litBounds.x, litBounds.y, litBounds.w, litBounds.h, litBounds.x, litBounds.y, litBounds.w, litBounds.h);
 
+  // 5. Player
   ctx.fillStyle = 'orange';
   ctx.beginPath();
   ctx.arc(player.visualX, player.visualY, 8, 0, Math.PI * 2);
   ctx.fill();
 
-  // 6. Walls, drawn on top, always visible if within explored or lit area
-  ctx.fillStyle = '#0F1411';
-  for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h);
-
-  // 7. Mirrors
+  // 6. Mirrors
   ctx.strokeStyle = '#8cf';
   ctx.lineWidth = 4;
   for (const m of mirrors) {
@@ -225,8 +286,22 @@ export const draw = (now: number) => {
     ctx.stroke();
   }
 
-  // 8. Perf readout
+  // 7. Perf readout
   ctx.fillStyle = '#0f0';
   ctx.font = '12px monospace';
   ctx.fillText(`${fps} fps · ${rayCount} rays · ${groups.length - 1} reflections`, 8, 16);
+
+  // 8. Win overlay
+  if (gameState.status === 'won') {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#f5c542';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('Level Complete', canvas.width / 2, canvas.height / 2);
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#ccc';
+    ctx.fillText('Press Enter to continue', canvas.width / 2, canvas.height / 2 + 32);
+    ctx.textAlign = 'start';
+  }
 }

@@ -3,10 +3,7 @@ import { SCENE_STRIDE } from "./interfaces";
 import { RAY_REFINE_DEPTH, MAX_TRACED_RAYS } from "./consts";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
-// angle of reflection) until it hits a wall, runs out of range, or runs out of bounces. Replaces
-// the old virtual-light approach, which built each mirror's reflection polygon separately and then
-// had to work backward to check whether each path was physically real. Here, a path either happens
-// or it doesn't.
+// angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.
 //
 // For the lit area, adjacent rays are paired up into strips (quads between ray i and ray i+1),
 // one strip per leg. Two neighbouring rays only share a leg-k strip if they bounced off the exact

@@ -1,8 +1,7 @@
-import type { Mirror, Scene, Segment } from "./interfaces";
+import type { Mirror, Scene, Segment, Wall } from "./interfaces";
 import { SCENE_STRIDE } from "./interfaces";
-import { walls } from "./consts";
 
-const getWallCorners = (w: typeof walls[0]) => {
+const getWallCorners = (w: Wall) => {
   return [
     { x: w.x, y: w.y },
     { x: w.x + w.w, y: w.y },
@@ -11,18 +10,17 @@ const getWallCorners = (w: typeof walls[0]) => {
   ];
 }
 
-const wallToSegments = (w: typeof walls[0]): Segment[] => {
+const wallToSegments = (w: Wall): Segment[] => {
   const c = getWallCorners(w);
   return [0, 1, 2, 3].map(i => ({ x1: c[i].x, y1: c[i].y, x2: c[(i + 1) % 4].x, y2: c[(i + 1) % 4].y }));
 }
 
-// Walls and mirrors are static today, so this rebuilt identical output every frame for nothing.
 // Cached on a cheap content fingerprint (not just array identity) so it stays correct once doors
-// or spinning mirrors start actually changing this geometry at runtime.
+// or spinning mirrors start changing this geometry at runtime.
 let cachedFingerprint = '';
 let cachedScene: Scene = { count: 0, coords: new Float64Array(0), mirrorIndex: new Int32Array(0), mirrorCount: 0 };
 
-export const getScene = (wallsList: typeof walls, mirrorsList: Mirror[]): Scene => {
+export const getScene = (wallsList: Wall[], mirrorsList: Mirror[]): Scene => {
   let fingerprint = '';
   for (const w of wallsList) fingerprint += `${w.x},${w.y},${w.w},${w.h};`;
   for (const m of mirrorsList) fingerprint += `${m.x1},${m.y1},${m.x2},${m.y2};`;

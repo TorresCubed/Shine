@@ -1,6 +1,16 @@
 export interface Mirror { x1: number; y1: number; x2: number; y2: number; }
 export interface Segment { x1: number; y1: number; x2: number; y2: number; }
 export interface Point { x: number; y: number; }
+export interface Wall { x: number; y: number; w: number; h: number; }
+
+export interface Level {
+  name: string;
+  start: { gridX: number; gridY: number };
+  goal: { gridX: number; gridY: number };
+  walls: Wall[];
+  mirrors: Mirror[];
+  allowFlashlight: boolean;
+}
 
 // Flat, typed-array form of every light-blocking segment, built for the ray tracer's inner loop.
 // `coords` is SCENE_STRIDE floats per segment: x1, y1, x2, y2, unit normal x, unit normal y.

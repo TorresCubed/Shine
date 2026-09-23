@@ -1,8 +1,4 @@
-import { player, GRID_SIZE, MOVE_SPEED, walls, MOVE_COOLDOWN, mirrors, keysDown } from "./consts";
-
-player.visualX = player.gridX * GRID_SIZE + GRID_SIZE / 2;
-player.visualY = player.gridY * GRID_SIZE + GRID_SIZE / 2;
-
+import { player, GRID_SIZE, MOVE_SPEED, walls, MOVE_COOLDOWN, mirrors, keysDown, gameState, goal } from "./consts";
 
 // `dt` in seconds. Scaled by frame time rather than a fixed per-frame step, so the glide speed
 // stays the same whatever the frame rate cap is.
@@ -39,6 +35,7 @@ export const isWalkable = (gx: number, gy: number): boolean => {
 let lastMoveTime = 0
 
 export const tryMove = (now: number) => {
+  if (gameState.status !== 'playing') return;
   if (now - lastMoveTime < MOVE_COOLDOWN) return;
 
   let dx = 0, dy = 0;
@@ -60,5 +57,6 @@ export const tryMove = (now: number) => {
     player.gridX = newX;
     player.gridY = newY;
     lastMoveTime = now;
+    if (newX === goal.gridX && newY === goal.gridY) gameState.status = 'won';
   }
 }

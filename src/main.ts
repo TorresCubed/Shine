@@ -1,4 +1,5 @@
-import { keysDown, lightState, FOG_MEMORY_SCALE } from "./consts";
+import { keysDown, lightState, FOG_MEMORY_SCALE, allowFlashlight, gameState, loadLevel } from "./consts";
+import { levels } from "./levels";
 import { draw } from "./renderer";
 
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -19,27 +20,40 @@ export const litCtx = litLayer.getContext('2d')!;
 export const dimLayer = document.createElement('canvas');
 export const dimCtx = dimLayer.getContext('2d')!;
 
+const clearFogMemory = () => {
+  exploredCtx.fillStyle = 'black';
+  exploredCtx.fillRect(0, 0, exploredCanvas.width, exploredCanvas.height);
+}
+
 export const resize = () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   exploredCanvas.width = Math.ceil(window.innerWidth * FOG_MEMORY_SCALE);
   exploredCanvas.height = Math.ceil(window.innerHeight * FOG_MEMORY_SCALE);
-  exploredCtx.fillStyle = 'black';
-  exploredCtx.fillRect(0, 0, exploredCanvas.width, exploredCanvas.height);
+  clearFogMemory();
   dimLayer.width = window.innerWidth;
   dimLayer.height = window.innerHeight;
   litLayer.width = window.innerWidth;
   litLayer.height = window.innerHeight;
 }
 
+let levelIndex = 0;
+const startLevel = (index: number) => {
+  levelIndex = index;
+  loadLevel(levels[index]);
+  clearFogMemory();
+}
+
 window.addEventListener('resize', resize);
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   keysDown.add(key);
-  if (key === 'f') lightState.mode = lightState.mode === 'candle' ? 'flashlight' : 'candle';
+  if (key === 'f' && allowFlashlight) lightState.mode = lightState.mode === 'candle' ? 'flashlight' : 'candle';
+  if (key === 'enter' && gameState.status === 'won') startLevel((levelIndex + 1) % levels.length);
 });
 window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
 
 resize();
+startLevel(0);
 
 requestAnimationFrame(draw);
