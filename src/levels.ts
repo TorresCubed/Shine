@@ -1,36 +1,44 @@
-import type { GridPos, Lamp, Level, LightKind, Pickup, Wall } from "./interfaces";
+import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Wall } from "./interfaces";
 import { GRID_SIZE } from "./consts";
 
-// Levels are drawn as text maps, one character per grid cell:
-//   '#' wall, '.' floor, 'S' start, 'G' goal
-//   'L' wall lamp (a floor cell next to a wall; the lamp hangs on that wall, see Lamp)
-//   'F' flashlight lying switched off, to be found and picked up
-//   'C' candle standing on the floor, lit (like one you'd dropped), to be picked up
-// Doors and plates come in numbered pairs; a door opens by its own pair's plate (see Door):
-//   '1'-'9'  plate for pair 1-9          'a'-'i'  light door for pair 1-9
-//   'P'      plate for pair 1            'D'      light door for pair 1
-//                                        'K'      locked door for pair 1
-// All cells of a pair's door form one door. Start and goal always sit against an edge wall:
-// they'll become the entrance and exit doors.
+// Levels are text maps, one character per grid cell:
+//   '#' wall   '.' floor   'S' start   'G' goal (both against an edge wall: future entrance/exit)
+//   'L' wall lamp: a floor cell next to a wall; the lamp hangs on that wall
+//   'F' flashlight lying switched off, to be found      'C' candle standing on the floor, lit
+//   '-' '|' '/' '\' mirror, at that starting angle. Fixed unless the `mirrors` option says otherwise
+// Doors come in numbered pairs: a door is worked by its own pair's trigger.
+//   '1'-'9'  trigger for pair 1-9     'a'-'i'  door for pair 1-9
+//   'P'      trigger for pair 1       'D'      door for pair 1      'K'  locked door for pair 1
+// A trigger is a light plate, and its door a light door, unless the level's `doors` option says
+// otherwise: e.g. { doors: { 2: 'lever' } } makes pair 2's trigger a lever, or 'locked' makes its
+// door a locked one. A lever doesn't need a door: it can just turn mirrors.
+// The `mirrors` option, keyed by "x,y", makes a mirror 'turnable' (Space in its cell turns it) or turned by lever n
+// (a step each pull): e.g. { mirrors: { '3,1': 'turnable', '5,4': 2 } }.
 //
-// Wall cells are merged into as few rectangles as possible (horizontal runs, then stacked runs
-// with the same span), since every rectangle adds four edges for the ray tracer to test.
-//
-// `options` sets what you start with: by default the candle in hand and nothing in your pocket,
-// and which way a flashlight starts aimed (default down); point it where the player should go.
+// Levels are numbered in the order they're added below; finishing the last loops back to the first.
+
+type LevelOptions = {
+  held?: LightKind | null;        // light in hand at the start (default: the candle)
+  stowed?: LightKind[];           // lights in your pocket at the start
+  aim?: keyof typeof AIMS;        // which way a flashlight starts aimed; point it where they should go
+  doors?: Record<number, Door['kind']>;
+  mirrors?: Record<string, 'turnable' | number>;
+};
+
 const AIMS = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 };
-const fromMap = (
-  name: string,
-  map: string[],
-  options: { held?: LightKind | null; stowed?: LightKind[]; aim?: keyof typeof AIMS } = {},
-): Level => {
+const MIRROR_CHARS: Record<string, number> = { '-': 0, '\\': 2, '|': 4, '/': 6 }; // steps of 22.5°
+
+// Wall cells are merged into as few rectangles as possible (horizontal runs, then stacked runs with
+// the same span), since every rectangle adds four edges for the ray tracer to test.
+const fromMap = (name: string, map: string[], options: LevelOptions): Level => {
   const walls: Wall[] = [];
   const lampCells: GridPos[] = [];
-  const pickups: Pickup[] = [];
-  const litOnFloor: Pickup[] = [];
-  const pairs = new Map<number, { plate?: GridPos; cells: GridPos[]; kind: 'light' | 'locked' }>();
+  const mirrors: Mirror[] = [];
+  const pickups: FloorLight[] = [];
+  const startDropped: FloorLight[] = [];
+  const pairs = new Map<number, { trigger?: GridPos; cells: GridPos[]; kind: Door['kind'] }>();
   const pair = (n: number) => {
-    if (!pairs.has(n)) pairs.set(n, { cells: [], kind: 'light' });
+    if (!pairs.has(n)) pairs.set(n, { cells: [], kind: options.doors?.[n] ?? 'light' });
     return pairs.get(n)!;
   };
   let start: GridPos | undefined;
@@ -42,15 +50,16 @@ const fromMap = (
     for (let x = 0; x < row.length; x++) {
       const ch = row[x], cell = { gridX: x, gridY: y };
       if (ch === 'S') start = cell;
-      if (ch === 'G') goal = cell;
-      if (ch === 'C') litOnFloor.push({ kind: 'candle', ...cell, aimAngle: 0 });
-      if (ch === 'L') lampCells.push(cell);
-      if (ch === 'F') pickups.push({ kind: 'flashlight', ...cell, aimAngle: 0 });
-      if (ch === 'P') pair(1).plate = cell;
-      if (ch >= '1' && ch <= '9') pair(Number(ch)).plate = cell;
-      if (ch === 'D') pair(1).cells.push(cell);
-      if (ch === 'K') { pair(1).cells.push(cell); pair(1).kind = 'locked'; }
-      if (ch >= 'a' && ch <= 'i') pair(ch.charCodeAt(0) - 96).cells.push(cell);
+      else if (ch === 'G') goal = cell;
+      else if (ch === 'L') lampCells.push(cell);
+      else if (ch === 'F') pickups.push({ kind: 'flashlight', ...cell, aimAngle: 0 });
+      else if (ch === 'C') startDropped.push({ kind: 'candle', ...cell, aimAngle: 0 });
+      else if (ch in MIRROR_CHARS) mirrors.push({ ...cell, step: MIRROR_CHARS[ch], control: options.mirrors?.[`${x},${y}`] ?? 'fixed' });
+      else if (ch === 'P') pair(1).trigger = cell;
+      else if (ch >= '1' && ch <= '9') pair(Number(ch)).trigger = cell;
+      else if (ch === 'D') pair(1).cells.push(cell);
+      else if (ch === 'K') { pair(1).cells.push(cell); pair(1).kind = 'locked'; }
+      else if (ch >= 'a' && ch <= 'i') pair(ch.charCodeAt(0) - 96).cells.push(cell);
       if (ch !== '#') continue;
 
       let end = x;
@@ -66,32 +75,48 @@ const fromMap = (
   });
 
   if (!start || !goal) throw new Error(`${name}: map needs an S and a G`);
-  const doors: Level['doors'] = [...pairs].map(([n, p]) => {
-    if (!p.plate) throw new Error(`${name}: door ${n} has no plate`);
-    if (p.cells.length === 0) throw new Error(`${name}: plate ${n} has no door`);
+  const levers: Lever[] = [];
+  const doors: Door[] = [];
+  for (const [n, p] of pairs) {
+    if (!p.trigger) throw new Error(`${name}: door ${n} has no trigger`);
+    if (p.kind === 'lever') levers.push({ ...p.trigger, id: n });
+    if (p.cells.length === 0) {
+      if (p.kind !== 'lever') throw new Error(`${name}: plate ${n} has no door`);
+      continue;
+    }
     const { gridX: x, gridY: y } = p.cells[0];
     const inHorizontalWall = map[y][x - 1] === '#' || map[y][x + 1] === '#';
-    return { kind: p.kind, cells: p.cells, plate: p.plate, slide: inHorizontalWall ? 'x' : 'y' };
-  });
+    doors.push({ kind: p.kind, cells: p.cells, trigger: p.trigger, slide: inHorizontalWall ? 'x' : 'y' });
+  }
+  for (const m of mirrors) {
+    if (typeof m.control === 'number' && !levers.some(l => l.id === m.control)) {
+      throw new Error(`${name}: mirror at ${m.gridX},${m.gridY} is turned by lever ${m.control}, which isn't a lever`);
+    }
+  }
   // Each lamp hangs on the first adjacent wall found (up, right, down, left).
   const lamps: Lamp[] = lampCells.map(c => {
     const side = [[0, -1], [1, 0], [0, 1], [-1, 0]].find(([dx, dy]) => map[c.gridY + dy]?.[c.gridX + dx] === '#');
     if (!side) throw new Error(`${name}: lamp at ${c.gridX},${c.gridY} needs a wall next to it`);
     return { ...c, toWallX: side[0], toWallY: side[1] };
   });
+
   return {
-    name, start, goal, walls, doors, lamps, pickups, mirrors: [],
+    name, start, goal, walls, doors, lamps, mirrors, levers, pickups, startDropped,
     width: Math.max(...map.map(row => row.length)),
     height: map.length,
     startHeld: options.held === undefined ? 'candle' : options.held,
     startStowed: options.stowed ?? [],
     startAim: AIMS[options.aim ?? 'down'],
-    startDropped: litOnFloor,
   };
 }
 
+export const levels: Level[] = [];
+const level = (map: string[], options: LevelOptions = {}) => {
+  levels.push(fromMap(`Level ${levels.length + 1}`, map, options));
+}
+
 // Level 1: an empty room. Just grid movement and the candle.
-const level1 = fromMap("Level 1", [
+level([
   "##############",
   "#............#",
   "#............#",
@@ -106,7 +131,7 @@ const level1 = fromMap("Level 1", [
 
 // Level 2: a U-shaped hallway, 3 cells wide. Start and exit are close as the crow flies, but the
 // middle block hides one from the other, so you have to walk the long way round.
-const level2 = fromMap("Level 2", [
+level([
   "############",
   "#.S.####.G.#",
   "#...####...#",
@@ -121,7 +146,7 @@ const level2 = fromMap("Level 2", [
 
 // Level 3: a small maze. Start in a room, then corridors of 1, 2 and 3 cells wide. Two dead ends:
 // one down from the start room into a small closet, one off the 2-wide corridor to the right.
-const level3 = fromMap("Level 3", [
+level([
   "##################",
   "#....#############",
   "#S..........######",
@@ -140,7 +165,7 @@ const level3 = fromMap("Level 3", [
 // Level 4: light plates. A 2-wide hallway with the exit behind a door in the top wall, 6 cells
 // along. The door's face comes into the light about 3 cells before you reach it; the plate, two
 // cells past the doorway, only lights once you're at the door, so you see it closed first.
-const level4 = fromMap("Level 4", [
+level([
   "#############",
   "#######G#####",
   "#######D#####",
@@ -155,7 +180,7 @@ const level4 = fromMap("Level 4", [
 // candle at (4,4) instead: from there it lights the plate, the doorway, and the exit (exactly 3
 // cells away, ~15.3% brightness, just over the 15% the fear rule needs), so you can walk out.
 // Geometry is tight: changing CANDLE_RADIUS, LIT_THRESHOLD or the falloff can break this level.
-const level5 = fromMap("Level 5", [
+level([
   "##########",
   "####G#####",
   "####D#####",
@@ -170,7 +195,7 @@ const level5 = fromMap("Level 5", [
 // it lit and open the door at once: carry the candle over and the door re-locks on the way. Drop
 // the candle between the two (e.g. (7,4)) so it lights the plate and your path to the door, walk
 // over and open it, go back for the candle, and carry it down the dark corridor to the exit.
-const level6 = fromMap("Level 6", [
+level([
   "############",
   "#G........##",
   "#########K##",
@@ -187,7 +212,7 @@ const level6 = fromMap("Level 6", [
 // together they do: the only way from the candle's light into the lamp's. The lamp hangs on the
 // right wall at (5,2) (on the top wall the beams shifted just enough to break the bridge). Moving
 // the lamp, plate, door or drop spot will likely break it.
-const level7 = fromMap("Level 7", [
+level([
   "##########",
   "#.G...####",
   "#....L####",
@@ -208,7 +233,7 @@ const level7 = fromMap("Level 7", [
 // lies switched off. Pick it up and it switches on: with the candle left holding the door, it's
 // your light for the long dark corridor round to the exit. Comfortable margins: the doorway gets
 // light from both the candle and the lamp.
-const level8 = fromMap("Level 8", [
+level([
   "###############",
   "#..L..#########",
   "#....F.......G#",
@@ -224,7 +249,7 @@ const level8 = fromMap("Level 8", [
 // Level 9: hitting a far plate. You start with only the flashlight, aimed up. The plate (1) is at
 // the far end of the room from the light door (a): aim the flashlight at it and keep it there while
 // you walk to the door and out. A wall lamp lights the way down to the door.
-const level9 = fromMap("Level 9", [
+level([
   "######",
   "#...1#",
   "#....#",
@@ -245,7 +270,7 @@ const level9 = fromMap("Level 9", [
 // There's exactly one spot to drop the flashlight from which its widening beam reaches both the
 // plate (opening the door) and the way out, so you can walk up inside the beam empty-handed.
 // Anywhere else it can't be done, and there's no way to strand yourself.
-const level10 = fromMap("Level 10", [
+level([
   "######",
   "#1##G#",
   "#.##a#",
@@ -269,7 +294,7 @@ const level10 = fromMap("Level 10", [
 // you open the door. Drop the flashlight in the room aimed down the hallway (anywhere along row 6),
 // walk to the door in the lamp's light and open it (it stays open), then go back for the flashlight
 // and carry it out. Dropped anywhere, it can always be walked back to, so there's no trap.
-const level11 = fromMap("Level 11", [
+level([
   "################",
   "###########G####",
   "###########K####",
@@ -289,7 +314,7 @@ const level11 = fromMap("Level 11", [
 // lamp light the way. Carrying the candle through instead is a dead end (it can't hold plate 2
 // from anywhere you can stand in light), but not a trap: the flashlight is still holding door a,
 // so you can go back and swap.
-const level12 = fromMap("Level 12", [
+level([
   "################",
   "#######LG.######",
   "########b#######",
@@ -314,7 +339,7 @@ const level12 = fromMap("Level 12", [
 // behind. Plate 1 can't be seen from door a's doorway, so you can't hold it lit and get shut in
 // closet a. Holding door a with the candle instead also works, and shows the carry limit: you
 // can't take closet a's flashlight until you drop yours.
-const level13 = fromMap("Level 13", [
+level([
   "################",
   "################",
   "######.2F#######",
@@ -336,7 +361,7 @@ const level13 = fromMap("Level 13", [
 // Closet c has no flashlight, so fetch the first one back from plate 2: door b shuts, but the
 // flashlight inside keeps plate 3 lit, so door c stays open. Then walk out empty-handed through the
 // lamps' light.
-const level14 = fromMap("Level 14", [
+level([
   "###############",
   "#######G#######",
   "#######a#######",
@@ -375,7 +400,7 @@ const level14 = fromMap("Level 14", [
 // go back for a light to carry down the corridor. Either light can take either plate: e.g. the
 // flashlight aimed down the slot at plate 2 and the candle by plate 1, or the candle in the slot
 // and the flashlight shone through b onto plate 1 from the start room.
-const level15 = fromMap("Level 15", [
+level([
   "################",
   "#G.....#########",
   "######.#########",
@@ -390,5 +415,31 @@ const level15 = fromMap("Level 15", [
   "################",
 ], { held: 'candle', stowed: ['flashlight'], aim: 'down' });
 
-// Played in order; finishing the last one loops back to the first.
-export const levels: Level[] = [level1, level2, level3, level4, level5, level6, level7, level8, level9, level10, level11, level12, level13, level14, level15];
+
+// Level 16: mirrors. Flashlight in hand, candle pocketed. The exit door's plate (1) is down a
+// corridor round a corner from the flashlight's reach; a mirror sits in the corner, starting turned
+// the wrong way ('\'). Turn it with T until it's '/' (four turns): then a flashlight dropped anywhere
+// in the long corridor, aimed up, bounces off it onto the plate. Carrying the flashlight doesn't
+// work (step out of the corridor and the beam leaves the mirror), so drop it and walk out with the
+// candle.
+level([
+  "#########",
+  "#\\....1.#",
+  "#.#######",
+  "#.#######",
+  "#S#######",
+  "#a#######",
+  "#G#######",
+  "#########",
+], { held: 'flashlight', stowed: [], aim: 'up', mirrors: { '1,1': 'turnable' } });
+
+// Level 17: levers. The exit door (a) is worked by a lever (1), not a plate: pull it with T and the
+// door opens; pull it again and it shuts.
+// level([
+//   "#############",
+//   "#S....#....G#",
+//   "#.....a.....#",
+//   "#.....#.....#",
+//   "#..1..#######",
+//   "#############",
+// ], { doors: { 1: 'lever' } });

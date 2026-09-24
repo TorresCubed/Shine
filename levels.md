@@ -70,8 +70,10 @@ Rules:
   door (any closer and you could just hold the candle there), which puts the exit right at the
   15% edge. Later door puzzles should give the exit more room, e.g. a longer light source
   (flashlight) or a lit space beyond the door.
-- **Controls:** Space drops the held light on your cell; Space while standing on a dropped light
-  picks it up. Walking over it does nothing. R restarts the current level at any time.
+- **Controls:** Space is the one action key. Standing in a lever's cell it pulls the lever; in a
+  turnable mirror's cell it turns the mirror; anywhere else it picks up the light on your cell, or
+  drops the one in hand. Walking over a light does nothing. F swaps lights, Q/E aim the flashlight
+  while standing still. R restarts the current level at any time.
 
 ### Act 2.5: Lamps and light that adds up
 Wall lamps built into the level: they hang on a wall and shine from its edge, reach one cell
@@ -114,8 +116,8 @@ lamp in a closed room isn't visible through the walls.
 Picked up in the level. It's long-range and directional, and it gets its **own** kind of puzzle,
 separate from mirrors. It lies in the level switched off ('F' in maps) until found; pick it up
 (Space) and it switches on in hand while the candle goes into your pocket, switched off. F then
-swaps the two. Aiming is separate from movement: Q/E swing the beam a full 360° around the
-character. A dropped flashlight keeps its aim, and picking it up takes that aim back. A pocketed
+swaps the two. The flashlight faces the way you walk; standing still, Q/E swing it a full 360°
+to look around. A dropped flashlight keeps its aim, and picking it up takes that aim back. A pocketed
 light gives no light, so the fear rule applies if nothing is in hand.
 - **A walkable beam:** dropped and aimed, it lights a long path across a room the candle can't
   cover, and the fear rule makes that beam the only way across.
@@ -126,9 +128,24 @@ light gives no light, so the fear rule applies if nothing is in hand.
 
 ### Act 4: Mirrors
 Comes after the flashlight, because the candle's short range makes reflections barely matter.
-- Fixed mirrors first: a reflection lights a door or a path around a corner.
-- Then rotating mirrors: aim a dropped flashlight's beam through one or more mirrors to hit a
-  target or light a path.
+Mirrors are thin two-sided segments across their cell ('-', '|', '/', '\' in maps). They block
+movement only as that thin segment, so you can walk past one turned edge-on. Each is fixed,
+turnable by the player (Space, standing in its cell: a step of 22.5°), or turned by a lever (a step
+per pull); a pivot shows which (round = you, square = lever, none = fixed). Mirrors are a bit
+shorter than a cell, so you can stand in the cell beside one. A turn you cause shows completely,
+even the parts of the mirror in fog. You can see what a mirror you can see reflects.
+- **L16, mirrors (built):** turn a corner mirror so a dropped flashlight's beam bounces round onto
+  the exit door's plate.
+- Next: several mirrors in a chain; a mirror that must be turned a particular way to both light a
+  plate and a path.
+
+### Levers
+A lever is an alternative trigger to a plate (a level's `doors` option makes a pair's trigger a
+lever): Space, standing on it, toggles its door open and shut, no light needed, and turns any mirrors linked to it. A
+lever doesn't need a door; it can just turn mirrors.
+- **L17, levers (built):** the simplest lever door.
+- Next: levers that turn mirrors (the "lever-controlled hidden mirrors" from the concept), now
+  supported: `{ doors: { 2: 'lever' }, mirrors: { '5,4': 2 } }`.
 
 ### Later
 From the project notes, order not decided yet:

@@ -1,25 +1,31 @@
-export interface Mirror { x1: number; y1: number; x2: number; y2: number; }
-export interface Segment { x1: number; y1: number; x2: number; y2: number; }
 export interface Point { x: number; y: number; }
+export interface Segment { x1: number; y1: number; x2: number; y2: number; }
 export interface Wall { x: number; y: number; w: number; h: number; }
 export interface GridPos { gridX: number; gridY: number; }
 
-// A door acts as a wall while closed. `slide` is the axis it slides open along: along the wall it
-// sits in. Kinds:
-//   light:  open while its plate is lit.
-//   locked: unlocked while its plate is lit; walk into it while unlocked to open it, and it
-//           stays open from then on.
-export interface Door { kind: 'light' | 'locked'; cells: GridPos[]; plate: GridPos; slide: 'x' | 'y'; }
-
-// A wall lamp: sits on a floor cell against a wall, and shines from that wall's edge. `toWallX/Y`
-// is the unit step from the cell toward its wall.
-export interface Lamp extends GridPos { toWallX: number; toWallY: number; }
-
 export type LightKind = 'candle' | 'flashlight';
 
-// A light lying in the level, switched off, waiting to be found and picked up. A flashlight is
-// drawn pointing along `aimAngle`, and shines that way once picked up.
-export interface Pickup extends GridPos { kind: LightKind; aimAngle: number; }
+// A light on the floor. A flashlight points along `aimAngle` (and shines that way once picked up).
+export interface FloorLight extends GridPos { kind: LightKind; aimAngle: number; }
+
+// A wall lamp sits on a floor cell and shines from the edge of the wall next to it. `toWallX/Y` is
+// the unit step from the cell toward that wall.
+export interface Lamp extends GridPos { toWallX: number; toWallY: number; }
+
+// A mirror: a thin two-sided segment across the middle of its cell. `step` is its orientation, in
+// units of 180° / MIRROR_STEPS (0 = horizontal). `control` is what can turn it: nothing, the player
+// (Space, standing in its cell), or the lever with that id (a step per pull).
+export interface Mirror extends GridPos { step: number; control: 'fixed' | 'turnable' | number; }
+
+// A lever, pulled with Space while standing on it. It toggles its pair's door (if any) and turns the mirrors linked to it.
+export interface Lever extends GridPos { id: number; }
+
+// A door acts as a wall while closed. `slide` is the axis it slides open along (along its wall).
+//   light:  open while its plate is lit.
+//   locked: unlocked while its plate is lit; walk into it then and it opens for good.
+//   lever:  its lever toggles it open and shut.
+// `trigger` is the plate, or the lever, that works it.
+export interface Door { kind: 'light' | 'locked' | 'lever'; cells: GridPos[]; trigger: GridPos; slide: 'x' | 'y'; }
 
 export interface Level {
   name: string;
@@ -29,16 +35,17 @@ export interface Level {
   goal: GridPos;
   walls: Wall[];
   doors: Door[];
-  lamps: Lamp[]; // fixed lights: always on, can't be carried
-  pickups: Pickup[];
+  lamps: Lamp[];
   mirrors: Mirror[];
-  startHeld: LightKind | null; // light in hand at the start (lit)
-  startStowed: LightKind[];    // lights in your pocket at the start (off)
-  startAim: number;            // flashlight aim at the start, radians (point it where they should go)
-  startDropped: Pickup[];      // lights already standing on the floor at the start, lit
+  levers: Lever[];
+  pickups: FloorLight[];     // lights lying switched off, to be found
+  startDropped: FloorLight[]; // lights already on the floor, lit
+  startHeld: LightKind | null;
+  startStowed: LightKind[];
+  startAim: number;          // radians
 }
 
-// Flat, typed-array form of every light-blocking segment, built for the ray tracer's inner loop.
+// Flat, typed-array form of every light-blocking segment, for the ray tracer's inner loop.
 // `coords` is SCENE_STRIDE floats per segment: x1, y1, x2, y2, unit normal x, unit normal y.
 // `mirrorIndex` is the index into the mirrors list, or -1 for a plain (absorbing) wall edge.
 export interface Scene {

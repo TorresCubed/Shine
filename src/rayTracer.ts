@@ -38,9 +38,10 @@ export interface LightGroup {
   origin: Point;
   radius: number; // the light's range, which its falloff runs across
   polys: Point[][];
+  beamAxis?: number; // a flashlight beam's centre direction from `origin` (set by the renderer)
 }
 
-export interface LightResult {
+interface LightResult {
   groups: LightGroup[]; // groups[0] is always the direct light
   rayCount: number;
 }

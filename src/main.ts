@@ -1,7 +1,8 @@
-import { keysDown, FOG_MEMORY_SCALE, GRID_SIZE, gameState, loadLevel, camera, CAMERA_MAX_ZOOM } from "./consts";
+import { FOG_MEMORY_SCALE, GRID_SIZE, CAMERA_MAX_ZOOM } from "./consts";
+import { keysDown, gameState, loadLevel, camera } from "./state";
 import { levels } from "./levels";
 import { draw } from "./renderer";
-import { dropOrPickUpLight, swapHeldLight } from "./playerLogic";
+import { act, swapHeldLight } from "./playerLogic";
 
 // The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -12,20 +13,17 @@ export const ctx = canvas.getContext('2d')!;
 export const worldCanvas = document.createElement('canvas');
 export const worldCtx = worldCanvas.getContext('2d')!;
 
-// Persistent low-res grayscale mask: each pixel is the brightest that spot has ever been lit
-// (black = never seen). Opaque on purpose — see rememberLight in renderer.ts.
+// Fog memory: a low-res grayscale mask, each pixel the brightest that spot has ever been seen lit.
 export const exploredCanvas = document.createElement('canvas');
 export const exploredCtx = exploredCanvas.getContext('2d')!;
 
-// Scratch canvas where every currently-lit contribution (direct light + each mirror bounce) gets
-// accumulated additively ('lighter') before being composited onto the world canvas once — so
-// overlapping lit regions add brightness like real light instead of stacking translucent layers.
+// All of this frame's light regions, added together, before going onto the world canvas.
 export const litLayer = document.createElement('canvas');
 export const litCtx = litLayer.getContext('2d')!;
 
-// Reused scratch canvas for the dim "remembered" layer
-export const dimLayer = document.createElement('canvas');
-export const dimCtx = dimLayer.getContext('2d')!;
+// Scratch canvas each single light region is built on.
+export const regionLayer = document.createElement('canvas');
+export const regionCtx = regionLayer.getContext('2d')!;
 
 const resize = () => {
   canvas.width = window.innerWidth;
@@ -34,7 +32,7 @@ const resize = () => {
 
 // Sizes every world layer to the level, which also wipes the fog memory.
 const setWorldSize = (width: number, height: number) => {
-  for (const c of [worldCanvas, dimLayer, litLayer]) { c.width = width; c.height = height; }
+  for (const c of [worldCanvas, regionLayer, litLayer]) { c.width = width; c.height = height; }
   exploredCanvas.width = Math.ceil(width * FOG_MEMORY_SCALE);
   exploredCanvas.height = Math.ceil(height * FOG_MEMORY_SCALE);
   exploredCtx.fillStyle = 'black';
@@ -65,7 +63,7 @@ window.addEventListener('keydown', (e) => {
   if (key === 'f') swapHeldLight();
   if (key === ' ') {
     e.preventDefault(); // Space would otherwise scroll the page
-    dropOrPickUpLight();
+    act();
   }
   if (key === '=' || key === '+') zoomBy(1.25);
   if (key === '-') zoomBy(1 / 1.25);
