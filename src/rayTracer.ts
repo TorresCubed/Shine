@@ -1,6 +1,6 @@
 import type { Point, Scene } from "./interfaces";
 import { SCENE_STRIDE } from "./interfaces";
-import { RAY_REFINE_DEPTH, MAX_TRACED_RAYS } from "./consts";
+import { RAY_REFINE_DEPTH, MAX_TRACED_RAYS, LIGHT_FALLOFF_STOPS } from "./consts";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
 // angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.
@@ -36,6 +36,7 @@ class RayPath {
 export interface LightGroup {
   depth: number; // 0 = direct light, 1 = one bounce, etc.
   origin: Point;
+  radius: number; // the light's range, which its falloff runs across
   polys: Point[][];
 }
 
@@ -126,7 +127,7 @@ const trace = (ray: RayPath, ox: number, oy: number, angle: number, budget: numb
 
 const nextRay = (maxLegs: number): RayPath | null => {
   if (poolUsed >= MAX_TRACED_RAYS) return null;
-  if (poolUsed === pool.length) pool.push(new RayPath(maxLegs));
+  if (poolUsed === pool.length) pool.push(new RayPath(Math.max(maxLegs, poolLegs)));
   return pool[poolUsed++];
 }
 
@@ -153,13 +154,13 @@ const refine = (
 }
 
 // Emits the strip polygon covering leg k of rays[first..last] into its light group.
-const emitStrip = (groups: Map<number, LightGroup>, k: number, first: number, last: number, origin: Point) => {
+const emitStrip = (groups: Map<number, LightGroup>, k: number, first: number, last: number, origin: Point, radius: number) => {
   const key = rays[first].keys[k];
   let group = groups.get(key);
   if (!group) {
     const l = k * LEG_STRIDE;
     const v = k === 0 ? origin : { x: rays[first].legs[l + 4], y: rays[first].legs[l + 5] };
-    group = { depth: k, origin: v, polys: [] };
+    group = { depth: k, origin: v, radius, polys: [] };
     groups.set(key, group);
   }
 
@@ -183,7 +184,8 @@ export const castLight = (
   maxBounces: number
 ): LightResult => {
   const maxLegs = maxBounces + 1;
-  if (poolLegs !== maxLegs) { pool = []; poolLegs = maxLegs; }
+  // Pooled rays only ever grow: a ray with room for more legs works fine for fewer.
+  if (poolLegs < maxLegs) { pool = []; poolLegs = maxLegs; }
   poolUsed = 0;
   rays.length = 0;
   cullSegments(scene, origin.x, origin.y, budget);
@@ -209,9 +211,43 @@ export const castLight = (
       const a = rays[i], b = rays[i + 1];
       const joined = b !== undefined && a.legCount > k && b.legCount > k && a.keys[k] === b.keys[k];
       if (joined && runStart < 0) runStart = i;
-      if (!joined && runStart >= 0) { emitStrip(groups, k, runStart, i, origin); runStart = -1; }
+      if (!joined && runStart >= 0) { emitStrip(groups, k, runStart, i, origin, budget); runStart = -1; }
     }
   }
 
   return { groups: [...groups.values()], rayCount: rays.length };
+}
+
+// Brightness at `t` = distance / radius, from LIGHT_FALLOFF_STOPS.
+const falloffAt = (t: number) => {
+  for (let i = 1; i < LIGHT_FALLOFF_STOPS.length; i++) {
+    const [t1, v1] = LIGHT_FALLOFF_STOPS[i];
+    if (t <= t1) {
+      const [t0, v0] = LIGHT_FALLOFF_STOPS[i - 1];
+      return v0 + (v1 - v0) * (t - t0) / (t1 - t0);
+    }
+  }
+  return 0;
+}
+
+// Even-odd ray-crossing test.
+const insidePolygon = (p: Point, poly: Point[]) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y)) inside = !inside;
+  }
+  return inside;
+}
+
+export const insideAny = (p: Point, polys: Point[][]) => polys.some(poly => insidePolygon(p, poly));
+
+// Total brightness at `p` across every light group that reaches it. Light adds, same as on screen.
+export const brightnessAt = (p: Point, groups: LightGroup[]) => {
+  let total = 0;
+  for (const g of groups) {
+    if (!insideAny(p, g.polys)) continue;
+    total += falloffAt(Math.hypot(p.x - g.origin.x, p.y - g.origin.y) / g.radius);
+  }
+  return total;
 }
