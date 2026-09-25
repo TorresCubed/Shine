@@ -370,7 +370,7 @@ level([
   "####.......####",
   "####.......####",
   "####.......####",
-  "####.......e1C#",
+  "####.......e1F#",
   "####.......####",
   "####......L####",
   "####.......####",
@@ -433,13 +433,14 @@ level([
   "#########",
 ], { held: 'flashlight', stowed: [], aim: 'up', mirrors: { '1,1': 'turnable' } });
 
-// Level 17: levers. The exit door (a) is worked by a lever (1), not a plate: pull it with T and the
-// door opens; pull it again and it shuts.
-// level([
-//   "#############",
-//   "#S....#....G#",
-//   "#.....a.....#",
-//   "#.....#.....#",
-//   "#..1..#######",
-//   "#############",
-// ], { doors: { 1: 'lever' } });
+//Level 17: levers. The exit door (a) is worked by a lever (1), not a plate: pull it with T and the
+//door opens; pull it again and it shuts.
+level([
+  "#############",
+  "#S....#....G#",
+  "#.....a.....#",
+  "#.....#.....#",
+  "#..1..#######",
+  "#############",
+], { doors: { 1: 'lever' } });
+

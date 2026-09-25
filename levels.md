@@ -70,9 +70,10 @@ Rules:
   door (any closer and you could just hold the candle there), which puts the exit right at the
   15% edge. Later door puzzles should give the exit more room, e.g. a longer light source
   (flashlight) or a lit space beyond the door.
-- **Controls:** Space is the one action key. Standing in a lever's cell it pulls the lever; in a
-  turnable mirror's cell it turns the mirror; anywhere else it picks up the light on your cell, or
-  drops the one in hand. Walking over a light does nothing. F swaps lights, Q/E aim the flashlight
+- **Controls:** Space is the one action key, doing the first of: pull a lever in your cell; turn a
+  turnable mirror in your cell; pick up the light on your cell; turn a turnable mirror you're
+  facing close by (so pressing Space at a mirror never drops your light by mistake); drop the
+  light in hand. Walking over a light does nothing. F swaps lights, Q/E aim the flashlight
   while standing still. R restarts the current level at any time.
 
 ### Act 2.5: Lamps and light that adds up

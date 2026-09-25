@@ -1,13 +1,15 @@
 import {
   GRID_SIZE, LIT_THRESHOLD, FLASHLIGHT_TURN_DEG_PER_S, FLASHLIGHT_TURN_MIN_DEG_PER_S, FLASHLIGHT_TURN_RAMP_MS, FACING_TURN_DEG_PER_S,
-  PLAYER_SPEED, PLAYER_HALF_SIZE, CORNER_ASSIST, FEAR_REACH, MIRROR_THICKNESS, MIRROR_STEPS,
+  WALK_FACING_TOLERANCE_DEG,
+  PLAYER_SPEED, PLAYER_HALF_SIZE, CORNER_ASSIST, FEAR_REACH, MIRROR_THICKNESS, MIRROR_STEPS, MIRROR_STEP_MS,
+  MIRROR_REACH, MIRROR_REACH_FACING_DEG,
 } from "./consts";
 import { player, walls, keysDown, gameState, goal, lightState, doors, mirrors, levers, footprintCells } from "./state";
 import type { MirrorState } from "./state";
 import { brightnessAt } from "./rayTracer";
 import { tryOpenLockedDoor } from "./doorLogic";
 import type { LightGroup } from "./rayTracer";
-import type { GridPos, LightKind, Point } from "./interfaces";
+import type { FloorLight, GridPos, LightKind, Point } from "./interfaces";
 import { cellCenter, mirrorSegment, sameCell, segmentNearSquare } from "./util";
 
 // Walls and doors that aren't fully open block whole cells. (A door you could slip through while
@@ -20,7 +22,7 @@ export const isWalkable = (gx: number, gy: number): boolean => {
 
 // Mirrors block only as thin segments, so you can walk past one that's turned edge-on.
 const hitsMirror = (p: Point) =>
-  mirrors.some(m => segmentNearSquare(mirrorSegment(m), p, PLAYER_HALF_SIZE, MIRROR_THICKNESS / 2));
+  mirrors.some(m => segmentNearSquare(mirrorSegment(m, m.shownStep), p, PLAYER_HALF_SIZE, MIRROR_THICKNESS / 2));
 
 const footprintClear = (p: Point) =>
   footprintCells(p.x, p.y).every(c => isWalkable(c.gridX, c.gridY)) && !hitsMirror(p);
@@ -42,10 +44,11 @@ const tooDark = (p: Point, groups: LightGroup[]) => {
 // adjustment, then easing up to full speed while held. `dt` in seconds.
 let turnDir = 0;
 let turnHeldMs = 0;
+const angleBetween = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 export const updateAim = (dt: number, walkAngle: number | null) => {
   if (gameState.status !== 'playing') return;
   if (walkAngle !== null) {
-    const off = Math.atan2(Math.sin(walkAngle - player.aimAngle), Math.cos(walkAngle - player.aimAngle));
+    const off = angleBetween(player.aimAngle, walkAngle);
     const maxTurn = FACING_TURN_DEG_PER_S * Math.PI / 180 * dt;
     player.aimAngle += Math.max(-maxTurn, Math.min(maxTurn, off));
     turnDir = 0;
@@ -66,26 +69,42 @@ const takeIntoHand = (kind: LightKind) => {
   lightState.held = kind;
 }
 
-// Pick up the light on your cell (an unfound one switches on), or if there's none, set down
-// the one in hand and take out the pocketed one. You carry at most one of each kind, so a light
-// here you can't take blocks the cell: no picking it up, and no dropping yours on top of it.
-const dropOrPickUpLight = () => {
-  if (gameState.status !== 'playing') return;
-  const onThisCell = (c: GridPos) => sameCell(c, player);
+// A light on your cell (dropped, or unfound), or null. You carry at most one of each kind, so a light
+// here you can't take blocks the cell: no picking it up (`blocked`), and no dropping yours on top of it.
+const lightOnCell = () => {
   const carrying = (kind: LightKind) => lightState.held === kind || lightState.stowed.includes(kind);
   for (const list of [lightState.dropped, lightState.pickups]) {
-    const i = list.findIndex(onThisCell);
-    if (i < 0) continue;
-    if (carrying(list[i].kind)) return;
-    takeIntoHand(list[i].kind);
-    player.aimAngle = list[i].aimAngle;
-    list.splice(i, 1);
-    return;
+    const i = list.findIndex(c => sameCell(c, player));
+    if (i >= 0) return { list, i, blocked: carrying(list[i].kind) };
   }
-  if (lightState.held) {
-    lightState.dropped.push({ kind: lightState.held, gridX: player.gridX, gridY: player.gridY, aimAngle: player.aimAngle });
-    lightState.held = lightState.stowed.shift() ?? null;
+  return null;
+}
+
+// Picks up the light (an unfound one switches on), taking its aim.
+const pickUpLight = ({ list, i }: { list: FloorLight[]; i: number }) => {
+  takeIntoHand(list[i].kind);
+  player.aimAngle = list[i].aimAngle;
+  list.splice(i, 1);
+}
+
+// Sets down the light in hand and takes out the pocketed one.
+const dropLight = () => {
+  if (!lightState.held) return;
+  lightState.dropped.push({ kind: lightState.held, gridX: player.gridX, gridY: player.gridY, aimAngle: player.aimAngle });
+  lightState.held = lightState.stowed.shift() ?? null;
+}
+
+// The turnable mirror you're facing, close by (the nearest to straight ahead), if any.
+const facedMirror = () => {
+  let best: MirrorState | null = null, bestOff = MIRROR_REACH_FACING_DEG * Math.PI / 180;
+  for (const m of mirrors) {
+    if (m.control !== 'turnable') continue;
+    const c = cellCenter(m);
+    if (Math.hypot(c.x - player.x, c.y - player.y) > MIRROR_REACH) continue;
+    const off = Math.abs(angleBetween(player.aimAngle, Math.atan2(c.y - player.y, c.x - player.x)));
+    if (off <= bestOff) { best = m; bestOff = off; }
   }
+  return best;
 }
 
 // F: swap the light in hand for one in your pocket (or take one out, if your hand is empty).
@@ -96,19 +115,36 @@ export const swapHeldLight = () => {
   lightState.held = next;
 }
 
-// Turns a mirror a step, skipping any angle that would swing it into the player. You caused the
-// turn, so you see it complete, even the parts of the mirror in fog.
+// Turns a mirror a step, skipping any angle that would leave it in the player. It swings round to
+// there over MIRROR_STEP_MS per step (see updateMirrors). You caused the turn, so you see it through,
+// even the parts of the mirror in fog.
 const turnMirror = (m: MirrorState) => {
   for (let s = 1; s < MIRROR_STEPS; s++) {
     const next = (m.step + s) % MIRROR_STEPS;
     if (segmentNearSquare(mirrorSegment(m, next), player, PLAYER_HALF_SIZE, MIRROR_THICKNESS / 2)) continue;
-    m.step = m.seenStep = next;
+    m.step = next;
+    m.turnLeft += s;
+    m.followTurn = true;
     return;
   }
 }
 
-// Space, the one action key: in a lever's cell, pull it (toggling its door and turning its
-// mirrors); in a turnable mirror's cell, turn it; anywhere else, pick up or drop a light.
+// Swings turning mirrors on toward their step. `dt` in seconds.
+export const updateMirrors = (dt: number) => {
+  for (const m of mirrors) {
+    if (m.turnLeft <= 0) continue;
+    const d = Math.min(m.turnLeft, dt * 1000 / MIRROR_STEP_MS);
+    m.turnLeft -= d;
+    m.shownStep = m.turnLeft > 0 ? (m.shownStep + d) % MIRROR_STEPS : m.step;
+    if (m.followTurn) m.seenStep = m.shownStep;
+    if (m.turnLeft <= 0) m.followTurn = false;
+  }
+}
+
+// Space, the one action key, doing the first of: pull a lever in your cell (toggling its door and
+// turning its mirrors); turn a turnable mirror in your cell; pick up a light on your cell; turn a
+// turnable mirror you're facing close by (so pressing Space at one never drops your light by
+// mistake); drop your light.
 export const act = () => {
   if (gameState.status !== 'playing') return;
   const lever = levers.find(l => sameCell(l, player));
@@ -117,9 +153,16 @@ export const act = () => {
     for (const m of mirrors) if (m.control === lever.id) turnMirror(m);
     return;
   }
-  const mirror = mirrors.find(m => m.control === 'turnable' && sameCell(m, player));
-  if (mirror) turnMirror(mirror);
-  else dropOrPickUpLight();
+  const mirrorHere = mirrors.find(m => m.control === 'turnable' && sameCell(m, player));
+  if (mirrorHere) return turnMirror(mirrorHere);
+  const light = lightOnCell();
+  if (light) {
+    if (!light.blocked) pickUpLight(light);
+    return;
+  }
+  const faced = facedMirror();
+  if (faced) turnMirror(faced);
+  else dropLight();
 }
 
 // Moves the player `delta` px along one axis. Blocked by walls, closed doors (stopping flush
@@ -172,6 +215,10 @@ export const tryMove = (dt: number, groups: LightGroup[]): number | null => {
   const iy = (held('s', 'arrowdown') ? 1 : 0) - (held('w', 'arrowup') ? 1 : 0);
   if (ix === 0 && iy === 0) return null;
 
+  // Turn to face the way you want to go before setting off.
+  const walkAngle = Math.atan2(iy, ix);
+  if (Math.abs(angleBetween(player.aimAngle, walkAngle)) > WALK_FACING_TOLERANCE_DEG * Math.PI / 180) return walkAngle;
+
   const straight = ix === 0 || iy === 0; // corner assist only along one axis, so it never fights a diagonal slide
   const step = PLAYER_SPEED * dt / Math.hypot(ix, iy);
   moveAxis('x', ix * step, groups, straight);
@@ -180,5 +227,5 @@ export const tryMove = (dt: number, groups: LightGroup[]): number | null => {
   player.gridX = Math.floor(player.x / GRID_SIZE);
   player.gridY = Math.floor(player.y / GRID_SIZE);
   if (sameCell(player, goal)) gameState.status = 'won';
-  return Math.atan2(iy, ix);
+  return walkAngle;
 }

@@ -219,6 +219,24 @@ export const castLight = (
   return { groups: [...groups.values()], rayCount: rays.length };
 }
 
+// How far from `from` toward `to` you get before hitting any segment (or all the way).
+export const clearDistance = (scene: Scene, from: Point, to: Point) => {
+  const c = scene.coords;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  let best = 1;
+  for (let s = 0; s < scene.count; s++) {
+    const o = s * SCENE_STRIDE;
+    const ex = c[o + 2] - c[o], ey = c[o + 3] - c[o + 1];
+    const denom = dx * ey - dy * ex;
+    if (denom > -1e-12 && denom < 1e-12) continue;
+    const wx = c[o] - from.x, wy = c[o + 1] - from.y;
+    const t = (wx * ey - wy * ex) / denom;
+    const u = (wx * dy - wy * dx) / denom;
+    if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
+  }
+  return best * Math.hypot(dx, dy);
+}
+
 // Brightness at `t` = distance / radius, from LIGHT_FALLOFF_STOPS.
 const falloffAt = (t: number) => {
   for (let i = 1; i < LIGHT_FALLOFF_STOPS.length; i++) {

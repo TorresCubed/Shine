@@ -1,21 +1,22 @@
 import { polygonsPath, cellCenter, mirrorSegment } from "./util";
-import { tryMove, updateAim } from "./playerLogic";
+import { tryMove, updateAim, updateMirrors } from "./playerLogic";
 import { getScene } from "./scene";
-import { castLight, insideAny, brightnessAt } from "./rayTracer";
+import { castLight, insideAny, brightnessAt, clearDistance } from "./rayTracer";
 import type { LightGroup } from "./rayTracer";
 import type { LightKind, Point, Scene, Wall } from "./interfaces";
 import { updateDoors } from "./doorLogic";
 import {
   CANDLE_RADIUS, LAMP_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE, MAX_MIRROR_BOUNCES, GRID_SIZE, TARGET_FPS,
   CANDLE_RAY_COUNT, FLASHLIGHT_RAY_COUNT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, FOG_FLOOR_BRIGHTNESS,
-  LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION, LIGHT_FALLOFF_STOPS, MIRROR_THICKNESS, PLAYER_DRAW_RADIUS,
+  LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION, LIGHT_FALLOFF_STOPS, MIRROR_THICKNESS, PLAYER_SPRITES,
+  PLAYER_SPRITE_SCALE,
 } from "./consts";
 import { player, walls, levelWalls, doors, doorPanels, lamps, mirrors, levers, lightState, start, goal, gameState, camera } from "./state";
 import type { DoorState, MirrorState } from "./state";
-import { canvas, ctx, clampZoom, worldCanvas, worldCtx, exploredCanvas, exploredCtx, litLayer, litCtx, regionLayer, regionCtx } from "./main";
+import { canvas, ctx, clampZoom, pixelRatio, worldCanvas, worldCtx, exploredCanvas, exploredCtx, litLayer, litCtx, regionLayer, regionCtx } from "./main";
 
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
-const LIGHT_EDGE_GAP = 2;       // wall lamps shine from this far off the wall face, so rays never start on it
+const LIGHT_EDGE_GAP = 0.04 * GRID_SIZE;       // wall lamps shine from this far off the wall face, so rays never start on it
 const FLASHLIGHT_BACK = 0.28;   // a dropped flashlight shines from its handle end, this far (in cells) behind centre
 
 let lastFrameTime = -Infinity;
@@ -27,29 +28,115 @@ let fps = 0;
 let litGroups: LightGroup[] = [];
 let litGroupsHeld: LightKind | null = null;
 
-// A 2x2-cell checkerboard tile, repeated as a pattern, and a desaturated, darkened copy for fog memory.
-const floorTile = document.createElement('canvas');
-floorTile.width = floorTile.height = GRID_SIZE * 2;
-{
-  const t = floorTile.getContext('2d')!;
-  t.fillStyle = 'red';
-  t.fillRect(0, 0, GRID_SIZE, GRID_SIZE);
-  t.fillRect(GRID_SIZE, GRID_SIZE, GRID_SIZE, GRID_SIZE);
-  t.fillStyle = 'blue';
-  t.fillRect(GRID_SIZE, 0, GRID_SIZE, GRID_SIZE);
-  t.fillRect(0, GRID_SIZE, GRID_SIZE, GRID_SIZE);
+// One cell of floor or wall, repeated as a pattern, and a desaturated, darkened copy of each for fog
+// memory. The art is scaled to a cell with smoothing off, so pixel art stays crisp at any resolution.
+const makeTile = () => {
+  const tile = document.createElement('canvas');
+  tile.width = tile.height = GRID_SIZE;
+  return tile;
 }
-const dimFloorTile = document.createElement('canvas');
-dimFloorTile.width = dimFloorTile.height = GRID_SIZE * 2;
-{
-  const t = dimFloorTile.getContext('2d')!;
-  t.filter = `grayscale(1) brightness(${FOG_FLOOR_BRIGHTNESS})`;
-  t.drawImage(floorTile, 0, 0);
+const floorTile = makeTile(), dimFloorTile = makeTile();
+const paintTiles = (img: HTMLImageElement, lit: HTMLCanvasElement, dim: HTMLCanvasElement) => {
+  const t = lit.getContext('2d')!;
+  t.imageSmoothingEnabled = false;
+  t.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
+  const d = dim.getContext('2d')!;
+  d.filter = `grayscale(1) brightness(${FOG_FLOOR_BRIGHTNESS})`;
+  d.drawImage(lit, 0, 0);
 }
 
-const WALL_LIT_COLOR = '#8c8272';
-// The lit colours through the same grayscale + FOG_FLOOR_BRIGHTNESS (0.45) as the dim floor.
-const WALL_DIM_COLOR = '#3b3b3b';
+const loadImage = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error(`couldn't load ${url}`));
+  img.src = url;
+});
+
+// Every image in src/assets, by file name.
+const assetUrls = Object.fromEntries(
+  Object.entries(import.meta.glob<string>('./assets/*.png', { eager: true, query: '?url', import: 'default' }))
+    .map(([path, url]) => [path.slice('./assets/'.length), url]),
+);
+type SpriteKind = keyof typeof PLAYER_SPRITES;
+const playerSprites = {} as Record<SpriteKind, HTMLImageElement>;
+
+export const loadAssets = async () => {
+  const kinds = Object.keys(PLAYER_SPRITES) as SpriteKind[];
+  const [floor, wall, ...sprites] = await Promise.all([
+    loadImage(assetUrls['floorboards.png']),
+    loadImage(assetUrls['walls.png']),
+    ...kinds.map(k => loadImage(assetUrls[PLAYER_SPRITES[k].file])),
+  ]);
+  kinds.forEach((k, i) => playerSprites[k] = sprites[i]);
+  paintTiles(floor, floorTile, dimFloorTile);
+  wallImage = wall;
+}
+
+// Walls are autotiled from walls.png: every wall cell gets the tile's middle, and only the sides that
+// face floor get its rim, so neighbouring wall cells join into one solid wall. Corners are the tile's
+// own outer corner, a continuing edge, or an inner corner (the rim bent round, where only the
+// diagonal is floor). Baked once per level into wallArt, with a grayed, darkened copy for fog memory.
+const WALL_RIM = 4; // how deep the rim is in walls.png, in its pixels
+let wallImage: HTMLImageElement;
+const wallArt = document.createElement('canvas');
+const dimWallArt = document.createElement('canvas');
+let wallArtFor: Wall[] | null = null;
+const ensureWallArt = () => {
+  if (wallArtFor === levelWalls) return;
+  wallArtFor = levelWalls;
+  const cols = worldCanvas.width / GRID_SIZE, rows = worldCanvas.height / GRID_SIZE;
+  const isWall = (gx: number, gy: number) => {
+    if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) return true; // no rim facing out of the level
+    const { x, y } = cellCenter({ gridX: gx, gridY: gy });
+    return levelWalls.some(w => x > w.x && x < w.x + w.w && y > w.y && y < w.y + w.h);
+  }
+
+  wallArt.width = dimWallArt.width = worldCanvas.width;
+  wallArt.height = dimWallArt.height = worldCanvas.height;
+  const c = wallArt.getContext('2d')!;
+  c.imageSmoothingEnabled = false;
+  const n = wallImage.width, r = WALL_RIM, k = GRID_SIZE / n, mid = n - 2 * r;
+  // Copies a rect of walls.png (in its pixels) to that offset within the cell at (x0, y0).
+  const piece = (x0: number, y0: number, sx: number, sy: number, sw: number, sh: number, dx = sx, dy = sy) =>
+    c.drawImage(wallImage, sx, sy, sw, sh, x0 + dx * k, y0 + dy * k, sw * k, sh * k);
+
+  for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+    if (!isWall(gx, gy)) continue;
+    const x0 = gx * GRID_SIZE, y0 = gy * GRID_SIZE;
+    const up = isWall(gx, gy - 1), down = isWall(gx, gy + 1), left = isWall(gx - 1, gy), right = isWall(gx + 1, gy);
+    piece(x0, y0, r, r, mid, mid);
+    // Sides: the rim if it faces floor, otherwise more of the middle.
+    piece(x0, y0, r, up ? r : 0, mid, r, r, 0);
+    piece(x0, y0, r, down ? n - 2 * r : n - r, mid, r, r, n - r);
+    piece(x0, y0, left ? r : 0, r, r, mid, 0, r);
+    piece(x0, y0, right ? n - 2 * r : n - r, r, r, mid, n - r, r);
+    // Corners.
+    for (const [cx, cy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const vert = cy < 0 ? up : down, horiz = cx < 0 ? left : right, diag = isWall(gx + cx, gy + cy);
+      const dx = cx < 0 ? 0 : n - r, dy = cy < 0 ? 0 : n - r;           // the corner's spot in the cell
+      const inX = cx < 0 ? r : n - 2 * r, inY = cy < 0 ? r : n - 2 * r;   // the same, one rim further in
+      if (!vert && !horiz) piece(x0, y0, dx, dy, r, r);                 // outer corner
+      else if (!vert) piece(x0, y0, inX, dy, r, r, dx, dy);             // top/bottom rim runs through
+      else if (!horiz) piece(x0, y0, dx, inY, r, r, dx, dy);            // side rim runs through
+      else if (diag) piece(x0, y0, inX, inY, r, r, dx, dy);             // solid wall
+      else {
+        // Inner corner: each pixel is the rim at its distance from the corner point, taken from the
+        // middle of the top or bottom rim.
+        for (let i = 0; i < r; i++) for (let j = 0; j < r; j++) {
+          const depth = Math.max(i, j);
+          const px = cx < 0 ? i : r - 1 - i, py = cy < 0 ? j : r - 1 - j;
+          piece(x0, y0, n >> 1, cy < 0 ? depth : n - 1 - depth, 1, 1, dx + px, dy + py);
+        }
+      }
+    }
+  }
+
+  const d = dimWallArt.getContext('2d')!;
+  d.filter = `grayscale(1) brightness(${FOG_FLOOR_BRIGHTNESS})`;
+  d.drawImage(wallArt, 0, 0);
+}
+
+// A door's colour through the same grayscale + FOG_FLOOR_BRIGHTNESS (0.45) as the dim tiles.
 const DOOR_DIM_COLOR = '#282828';
 
 // Light doors are wood, lever doors iron; locked doors are red while locked, green once unlocked.
@@ -77,7 +164,7 @@ const drawFlashlight = (c: CanvasRenderingContext2D, x: number, y: number, angle
 // painted into both the lit and the remembered floor, so it's hidden in darkness and remembered in
 // fog like the floor itself. `dim` picks the fog palette, and draws mirrors as last seen.
 const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean) => {
-  c.lineWidth = 3;
+  c.lineWidth = 0.06 * GRID_SIZE;
 
   const s = cellCenter(start);
   c.strokeStyle = dim ? '#6e6e6e' : '#e8e0d0';
@@ -100,7 +187,7 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean) => {
     const p = cellCenter(l);
     const ex = p.x + l.toWallX * GRID_SIZE / 2, ey = p.y + l.toWallY * GRID_SIZE / 2;
     const alongX = Math.abs(l.toWallY), alongY = Math.abs(l.toWallX);
-    const barHalf = GRID_SIZE * 0.25, barDepth = 4;
+    const barHalf = GRID_SIZE * 0.25, barDepth = 0.08 * GRID_SIZE;
     c.fillStyle = dim ? '#6a6a6a' : '#b08a4a';
     c.fillRect(
       Math.min(ex - alongX * barHalf, ex - l.toWallX * barDepth),
@@ -147,13 +234,13 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean) => {
     c.stroke();
     c.fillStyle = dim ? '#7a7a7a' : '#d9534f';
     c.beginPath();
-    c.arc(tipX, tipY, 4, 0, Math.PI * 2);
+    c.arc(tipX, tipY, 0.08 * GRID_SIZE, 0, Math.PI * 2);
     c.fill();
   }
 
   // Mirrors, with a pivot showing what turns them: round = you can, square = a lever, none = fixed.
   for (const m of mirrors) {
-    const seg = mirrorSegment(m, dim ? m.seenStep : m.step), at = cellCenter(m);
+    const seg = mirrorSegment(m, dim ? m.seenStep : m.shownStep), at = cellCenter(m), pivot = 0.1 * GRID_SIZE;
     c.lineWidth = MIRROR_THICKNESS;
     c.strokeStyle = dim ? '#8a8a8a' : '#dff2ff';
     c.beginPath();
@@ -163,8 +250,8 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean) => {
     if (m.control === 'fixed') continue;
     c.fillStyle = dim ? '#5a5a5a' : '#8a93a0';
     c.beginPath();
-    if (m.control === 'turnable') c.arc(at.x, at.y, 5, 0, Math.PI * 2);
-    else c.rect(at.x - 5, at.y - 5, 10, 10);
+    if (m.control === 'turnable') c.arc(at.x, at.y, pivot, 0, Math.PI * 2);
+    else c.rect(at.x - pivot, at.y - pivot, pivot * 2, pivot * 2);
     c.fill();
   }
 }
@@ -189,15 +276,11 @@ const strokeWallFaces = (c: CanvasRenderingContext2D, polygons: Point[][], style
 
 // Lit wall faces, shaded by how squarely the light hits them (a face lit head-on is brighter than one
 // it grazes) and, for a flashlight, by the beam's profile (brightest along its centre line, fading
-// to its edges). The brightest faces also get a warm-white hotspot. Distance is handled by the
-// caller's falloff, so close up this is a small intense spot, far away a wide faint wash. Edges are
-// sorted into a few brightness bands so it's a handful of strokes, not one per edge.
+// to its edges), from 55% up to the paint's own brightness, never past it. Distance is handled by
+// the caller's falloff. Edges are sorted into a few brightness bands so it's a handful of strokes,
+// not one per edge.
 const FACE_BANDS = 6;
-const shadeRgb = (hex: string, f: number) => {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${Math.round((n >> 16) * f)},${Math.round(((n >> 8) & 255) * f)},${Math.round((n & 255) * f)})`;
-}
-const strokeLitFaces = (c: CanvasRenderingContext2D, group: LightGroup, color: string, rects: Wall[]) => {
+const strokeLitFaces = (c: CanvasRenderingContext2D, group: LightGroup, paint: string | CanvasPattern, rects: Wall[]) => {
   if (rects.length === 0) return;
   const bands: [Point, Point][][] = Array.from({ length: FACE_BANDS }, () => []);
   for (const poly of group.polys) {
@@ -231,11 +314,9 @@ const strokeLitFaces = (c: CanvasRenderingContext2D, group: LightGroup, color: s
     const v = (band + 0.5) / FACE_BANDS;
     c.beginPath();
     for (const [a, b] of edges) { c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); }
-    c.globalCompositeOperation = 'source-over';
-    c.strokeStyle = shadeRgb(color, 0.55 + 0.45 * v);
+    c.strokeStyle = paint;
     c.stroke();
-    c.globalCompositeOperation = 'lighter';
-    c.strokeStyle = `rgba(255, 240, 210, ${(0.8 * v ** 3).toFixed(3)})`;
+    c.strokeStyle = `rgba(0, 0, 0, ${(0.45 * (1 - v)).toFixed(3)})`;
     c.stroke();
   });
   c.restore();
@@ -263,33 +344,51 @@ const beamWallHit = (group: LightGroup) => {
   return null;
 }
 
-// A glow on the wall where the beam's centre hits it: at least HOTSPOT_MIN_RADIUS wide (close up the
-// beam itself is only a few px across) and brighter the closer you are, like a flashlight pressed
-// to a wall. At a slant it stretches along the wall into an ellipse, as a real beam's spot does
-// (up to HOTSPOT_MAX_STRETCH), rather than a tight spot with the rest of the wall falling dark.
-// Clipped to walls, so it never adds light to the floor you walk on.
-const HOTSPOT_MIN_RADIUS = 20;
-const HOTSPOT_MAX_STRETCH = 4;
-const hotspotRadius = (dist: number) => Math.max(HOTSPOT_MIN_RADIUS, dist * Math.tan(FLASHLIGHT_CONE / 2) * 1.75);
+// Where the beam's centre hits a wall, the wall itself shows through in a soft spot: the wall's own
+// art faded in, so it's never brighter than the wall really is. The spot is the beam's footprint (at
+// least HOTSPOT_MIN_RADIUS, since close up the beam is only a few px across), stretched along the wall
+// at a slant as a real beam's spot is (up to HOTSPOT_MAX_STRETCH), and fades with distance. Clipped
+// to the level's walls, so it never lights the floor you walk on.
+const HOTSPOT_MIN_RADIUS = 0.4 * GRID_SIZE;
+const HOTSPOT_BRIGHTNESS = 0.6; // how much of the wall shows at the spot's centre, close up
+const HOTSPOT_MAX_STRETCH = 2;
+const hotspotRadius = (dist: number) => Math.max(HOTSPOT_MIN_RADIUS, dist * Math.tan(FLASHLIGHT_CONE / 2));
 const hotspotStretch = (cos: number) => Math.min(HOTSPOT_MAX_STRETCH, 1 / Math.max(cos, 1e-3));
+const hotspotLayer = document.createElement('canvas');
+const hotspotCtx = hotspotLayer.getContext('2d')!;
 const drawBeamHotspot = (c: CanvasRenderingContext2D, group: LightGroup) => {
   const hit = beamWallHit(group);
   if (!hit) return;
-  const r = hotspotRadius(hit.dist);
-  const alpha = 0.95 * Math.max(0.50, 1 - hit.dist / (FLASHLIGHT_RANGE * 0.5));
+  const alpha = HOTSPOT_BRIGHTNESS * Math.max(0, 1 - hit.dist / FLASHLIGHT_RANGE);
+  if (alpha <= 0) return;
+  const r = hotspotRadius(hit.dist), stretch = hotspotStretch(hit.cos);
+
+  // The spot's soft shape, then the wall art (lined up with the world) kept only inside it.
+  const ext = Math.ceil(r * stretch);
+  const ox = Math.floor(hit.x) - ext, oy = Math.floor(hit.y) - ext;
+  const h = hotspotCtx;
+  hotspotLayer.width = hotspotLayer.height = ext * 2;
+  h.save();
+  h.translate(hit.x - ox, hit.y - oy);
+  h.rotate(hit.faceAngle);
+  h.scale(stretch, 1);
+  const shape = h.createRadialGradient(0, 0, 0, 0, 0, r);
+  shape.addColorStop(0, `rgba(0, 0, 0, ${alpha.toFixed(3)})`);
+  shape.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  h.fillStyle = shape;
+  h.fillRect(-r, -r, r * 2, r * 2);
+  h.restore();
+  const art = h.createPattern(wallArt, 'no-repeat')!;
+  art.setTransform(new DOMMatrix([1, 0, 0, 1, -ox, -oy]));
+  h.globalCompositeOperation = 'source-in';
+  h.fillStyle = art;
+  h.fillRect(0, 0, ext * 2, ext * 2);
+
   c.save();
   c.beginPath();
-  for (const w of walls) c.rect(w.x, w.y, w.w, w.h);
+  for (const w of levelWalls) c.rect(w.x, w.y, w.w, w.h);
   c.clip();
-  c.globalCompositeOperation = 'lighter';
-  c.translate(hit.x, hit.y);
-  c.rotate(hit.faceAngle);
-  c.scale(hotspotStretch(hit.cos), 1);
-  const glow = c.createRadialGradient(0, 0, 0, 0, 0, r);
-  glow.addColorStop(0, `rgba(255, 246, 225, ${alpha.toFixed(3)})`);
-  glow.addColorStop(1, 'rgba(255, 246, 225, 0)');
-  c.fillStyle = glow;
-  c.fillRect(-r, -r, r * 2, r * 2);
+  c.drawImage(hotspotLayer, ox, oy);
   c.restore();
 }
 
@@ -299,6 +398,7 @@ const dimFloorCanvas = document.createElement('canvas');
 const dimFloorCtx = dimFloorCanvas.getContext('2d')!;
 let dimFloorKey = '';
 const ensureDimFloor = () => {
+  ensureWallArt();
   const seenDoorWalls = doors.flatMap(d => doorPanels(d, d.seenOpenAmount));
   const key = JSON.stringify([
     worldCanvas.width, worldCanvas.height, start, goal, levelWalls, seenDoorWalls, lamps,
@@ -311,8 +411,7 @@ const ensureDimFloor = () => {
   dimFloorCtx.fillStyle = dimFloorCtx.createPattern(dimFloorTile, 'repeat')!;
   dimFloorCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
   drawFloorMarks(dimFloorCtx, true);
-  dimFloorCtx.fillStyle = WALL_DIM_COLOR;
-  for (const w of levelWalls) dimFloorCtx.fillRect(w.x, w.y, w.w, w.h);
+  dimFloorCtx.drawImage(dimWallArt, 0, 0);
   dimFloorCtx.fillStyle = DOOR_DIM_COLOR;
   for (const w of seenDoorWalls) dimFloorCtx.fillRect(w.x, w.y, w.w, w.h);
 }
@@ -387,7 +486,7 @@ const drawViewMask = (view: Point[][], b: Bounds) => {
 
 // A mirror is seen if any point just off either face, anywhere along it, is lit and in line of sight.
 const mirrorSeen = (m: MirrorState, groups: LightGroup[], view: Point[][]) => {
-  const seg = mirrorSegment(m);
+  const seg = mirrorSegment(m, m.shownStep);
   const len = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
   const nx = -(seg.y2 - seg.y1) / len * 4, ny = (seg.x2 - seg.x1) / len * 4;
   for (const t of [0.1, 0.3, 0.5, 0.7, 0.9]) {
@@ -443,7 +542,7 @@ const drawLitRegion = (group: LightGroup, b: Bounds) => {
   c.fill();
 
   c.globalCompositeOperation = 'source-over';
-  strokeLitFaces(c, group, WALL_LIT_COLOR, levelWalls);
+  strokeLitFaces(c, group, c.createPattern(wallArt, 'no-repeat')!, levelWalls);
   for (const door of doors) strokeLitFaces(c, group, doorColor(door), doorPanels(door, door.openAmount));
   drawBeamHotspot(c, group);
 
@@ -456,6 +555,27 @@ const drawLitRegion = (group: LightGroup, b: Bounds) => {
   c.globalCompositeOperation = 'source-over';
 }
 
+// A held light shines from where it is in the player sprite. That reaches past your footprint, so up
+// against a wall or mirror it's pulled back to just in front of it, never through. The flashlight's
+// beam fills its lens: it starts far enough behind the lens (inside the arm, under the sprite) to be
+// exactly lens-wide there.
+const heldLightSource = (kind: LightKind, scene: Scene): Point => {
+  const sprite = PLAYER_SPRITES[kind];
+  const fx = (sprite.light.x - sprite.anchor.x) * PLAYER_SPRITE_SCALE;
+  const fy = (sprite.light.y - sprite.anchor.y) * PLAYER_SPRITE_SCALE;
+  const cos = Math.cos(player.aimAngle), sin = Math.sin(player.aimAngle);
+  const aimed = { x: player.x + fx * cos - fy * sin, y: player.y + fx * sin + fy * cos };
+  const reach = Math.hypot(fx, fy);
+  const k = reach === 0 ? 0 : Math.max(0, Math.min(reach, clearDistance(scene, player, aimed) - 1)) / reach;
+  const lens = { x: player.x + (aimed.x - player.x) * k, y: player.y + (aimed.y - player.y) * k };
+  if (kind !== 'flashlight') return lens;
+
+  const fullBack = PLAYER_SPRITES.flashlight.lensHalfHeight * PLAYER_SPRITE_SCALE / Math.tan(FLASHLIGHT_CONE / 2);
+  const behind = { x: lens.x - cos * fullBack, y: lens.y - sin * fullBack };
+  const back = Math.max(0, Math.min(fullBack, clearDistance(scene, lens, behind) - 1));
+  return { x: lens.x - cos * back, y: lens.y - sin * back };
+}
+
 // Every light this frame: the one in hand, dropped ones, and the level's lamps. The player's lights
 // ignite at level start; lamps are already burning.
 const castAllLights = (scene: Scene, now: number) => {
@@ -464,7 +584,9 @@ const castAllLights = (scene: Scene, now: number) => {
   const range = (kind: LightKind) => (kind === 'flashlight' ? FLASHLIGHT_RANGE : CANDLE_RADIUS) * grow;
 
   const sources: { kind: LightKind; at: Point; aim: number; radius: number }[] = [];
-  if (lightState.held) sources.push({ kind: lightState.held, at: { x: player.x, y: player.y }, aim: player.aimAngle, radius: range(lightState.held) });
+  if (lightState.held) {
+    sources.push({ kind: lightState.held, at: heldLightSource(lightState.held, scene), aim: player.aimAngle, radius: range(lightState.held) });
+  }
   for (const d of lightState.dropped) {
     // A dropped flashlight shines from its handle end, so its own cell is inside the beam.
     const c = cellCenter(d), back = d.kind === 'flashlight' ? FLASHLIGHT_BACK * GRID_SIZE : 0;
@@ -514,21 +636,25 @@ const drawToScreen = () => {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = 'black';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(zoom, 0, 0, zoom, canvas.width / 2 - camX * zoom, canvas.height / 2 - camY * zoom);
+  // Whole-pixel offsets and no smoothing zoomed in, so art pixels land exactly on screen pixels and
+  // don't shimmer as the camera moves. Zoomed out below 1x the art has to shrink, so it's smoothed.
+  ctx.imageSmoothingEnabled = zoom < 1;
+  ctx.setTransform(zoom, 0, 0, zoom, Math.round(canvas.width / 2 - camX * zoom), Math.round(canvas.height / 2 - camY * zoom));
   ctx.drawImage(worldCanvas, 0, 0);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0); // on-screen text is sized in CSS px
 }
 
 const drawWinOverlay = () => {
+  const w = canvas.width / pixelRatio, h = canvas.height / pixelRatio;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, w, h);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f5c542';
   ctx.font = 'bold 36px sans-serif';
-  ctx.fillText('Level Complete', canvas.width / 2, canvas.height / 2);
+  ctx.fillText('Level Complete', w / 2, h / 2);
   ctx.fillStyle = '#ccc';
   ctx.font = '16px sans-serif';
-  ctx.fillText('Press Enter to continue', canvas.width / 2, canvas.height / 2 + 32);
+  ctx.fillText('Press Enter to continue', w / 2, h / 2 + 32);
   ctx.textAlign = 'start';
 }
 
@@ -549,6 +675,7 @@ export const draw = (now: number) => {
 
   const walkAngle = tryMove(dt, litGroupsHeld === lightState.held ? litGroups : []);
   updateAim(dt, walkAngle);
+  updateMirrors(dt);
 
   const scene = getScene(walls, mirrors);
   const { groups, rayCount, lightCount } = castAllLights(scene, now);
@@ -559,7 +686,7 @@ export const draw = (now: number) => {
   // only sees, and remembers, what's in line of sight.
   const view = computeView(scene);
   updateDoors(groups, view, dt);
-  for (const m of mirrors) if (mirrorSeen(m, groups, view)) m.seenStep = m.step;
+  for (const m of mirrors) if (mirrorSeen(m, groups, view)) m.seenStep = m.shownStep;
   rememberLight(groups, view);
 
   // Remembered floor: dim floor x fog memory (upscaled, which softens its edges), plus the base
@@ -592,13 +719,18 @@ export const draw = (now: number) => {
     if (d.kind === 'flashlight') { drawFlashlight(worldCtx, at.x, at.y, d.aimAngle, true, false); continue; }
     worldCtx.fillStyle = '#fff1b0';
     worldCtx.beginPath();
-    worldCtx.arc(at.x, at.y, 5, 0, Math.PI * 2);
+    worldCtx.arc(at.x, at.y, 0.1 * GRID_SIZE, 0, Math.PI * 2);
     worldCtx.fill();
   }
-  worldCtx.fillStyle = 'orange';
-  worldCtx.beginPath();
-  worldCtx.arc(player.x, player.y, PLAYER_DRAW_RADIUS, 0, Math.PI * 2);
-  worldCtx.fill();
+  const spriteKind = lightState.held ?? 'empty';
+  const { anchor } = PLAYER_SPRITES[spriteKind];
+  worldCtx.save();
+  worldCtx.translate(player.x, player.y);
+  worldCtx.rotate(player.aimAngle);
+  worldCtx.scale(PLAYER_SPRITE_SCALE, PLAYER_SPRITE_SCALE);
+  worldCtx.imageSmoothingEnabled = false;
+  worldCtx.drawImage(playerSprites[spriteKind], -anchor.x, -anchor.y);
+  worldCtx.restore();
 
   drawToScreen();
 

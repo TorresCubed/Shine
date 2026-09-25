@@ -30,8 +30,11 @@ export const gameState: { status: 'playing' | 'won'; startedAt: number } = { sta
 // the player saw it, which is what fog of war shows. triggerOn: its plate is lit, or its lever is
 // on. opened: a locked door the player has opened (it stays open).
 export type DoorState = Door & { openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean };
-// Mirrors: seenStep is the orientation the player last saw it at, for fog of war.
-export type MirrorState = Mirror & { seenStep: number };
+// Mirrors: `step` is where it's turning to; `shownStep` is where it actually is (fractional mid-turn),
+// which light, collision and drawing all use, with `turnLeft` steps still to go (always forward).
+// seenStep is the orientation the player last saw it at, for fog of war. followTurn: the player
+// caused this turn, so they see it through, even the parts of the mirror in fog.
+export type MirrorState = Mirror & { shownStep: number; turnLeft: number; seenStep: number; followTurn: boolean };
 export type LeverState = Lever & { on: boolean };
 
 export let levelWalls: Wall[] = [];
@@ -73,7 +76,7 @@ export const loadLevel = (level: Level) => {
   levelWalls = level.walls;
   doors = level.doors.map(d => ({ ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false }));
   walls = [...levelWalls, ...doors.flatMap(d => doorPanels(d, 0))];
-  mirrors = level.mirrors.map(m => ({ ...m, seenStep: m.step }));
+  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, seenStep: m.step, followTurn: false }));
   levers = level.levers.map(l => ({ ...l, on: false }));
   lamps = level.lamps;
   start = level.start;

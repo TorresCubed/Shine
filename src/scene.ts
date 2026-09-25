@@ -1,4 +1,5 @@
-import type { Mirror, Scene, Segment, Wall } from "./interfaces";
+import type { Scene, Segment, Wall } from "./interfaces";
+import type { MirrorState } from "./state";
 import { SCENE_STRIDE } from "./interfaces";
 import { mirrorSegment } from "./util";
 
@@ -17,16 +18,16 @@ const wallEdges = (w: Wall): Segment[] => {
 let cachedFingerprint = '';
 let cachedScene: Scene = { count: 0, coords: new Float64Array(0), mirrorIndex: new Int32Array(0), mirrorCount: 0 };
 
-export const getScene = (walls: Wall[], mirrors: Mirror[]): Scene => {
+export const getScene = (walls: Wall[], mirrors: MirrorState[]): Scene => {
   let fingerprint = '';
   for (const w of walls) fingerprint += `${w.x},${w.y},${w.w},${w.h};`;
-  for (const m of mirrors) fingerprint += `${m.gridX},${m.gridY},${m.step};`;
+  for (const m of mirrors) fingerprint += `${m.gridX},${m.gridY},${m.shownStep};`;
   if (fingerprint === cachedFingerprint) return cachedScene;
 
   const segs: Segment[] = [];
   const owners: number[] = [];
   for (const w of walls) for (const s of wallEdges(w)) { segs.push(s); owners.push(-1); }
-  mirrors.forEach((m, i) => { segs.push(mirrorSegment(m)); owners.push(i); });
+  mirrors.forEach((m, i) => { segs.push(mirrorSegment(m, m.shownStep)); owners.push(i); });
 
   const coords = new Float64Array(segs.length * SCENE_STRIDE);
   segs.forEach((s, i) => {

@@ -1,7 +1,7 @@
 import { FOG_MEMORY_SCALE, GRID_SIZE, CAMERA_MAX_ZOOM } from "./consts";
 import { keysDown, gameState, loadLevel, camera } from "./state";
 import { levels } from "./levels";
-import { draw } from "./renderer";
+import { draw, loadAssets } from "./renderer";
 import { act, swapHeldLight } from "./playerLogic";
 
 // The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
@@ -25,9 +25,15 @@ export const litCtx = litLayer.getContext('2d')!;
 export const regionLayer = document.createElement('canvas');
 export const regionCtx = regionLayer.getContext('2d')!;
 
+// The canvas has one pixel per physical screen pixel (so the browser never rescales it, e.g. with
+// Windows display scaling), and is shown at the window's size.
+export let pixelRatio = 1;
 const resize = () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(window.innerWidth * pixelRatio);
+  canvas.height = Math.round(window.innerHeight * pixelRatio);
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
 }
 
 // Sizes every world layer to the level, which also wipes the fog memory.
@@ -46,37 +52,48 @@ const startLevel = (index: number) => {
   setWorldSize(levels[index].width * GRID_SIZE, levels[index].height * GRID_SIZE);
 }
 
-// Zoom limits: in to CAMERA_MAX_ZOOM, out to where the whole level fits on screen.
+// Zoom is screen px per world px. From 1 up it's whole numbers only, so every art pixel is an exact
+// square of screen pixels. Below 1 (only to fit a level bigger than the screen) it's continuous,
+// down to where the whole level fits.
 export const clampZoom = (zoom: number) => {
   const fit = Math.min(canvas.width / worldCanvas.width, canvas.height / worldCanvas.height);
-  return Math.min(CAMERA_MAX_ZOOM, Math.max(Math.min(fit, CAMERA_MAX_ZOOM), zoom));
+  const z = Math.min(CAMERA_MAX_ZOOM, Math.max(Math.min(fit, 1), zoom));
+  return z >= 1 ? Math.floor(z) : z;
 }
 
-const zoomBy = (factor: number) => {
-  camera.zoom = clampZoom(camera.zoom * factor);
+const ZOOM_OUT_STEP = 1.25; // per step below 1x
+const zoomStep = (dir: 1 | -1) => {
+  const z = camera.zoom;
+  camera.zoom = clampZoom(dir > 0 ? (z < 1 ? Math.min(1, z * ZOOM_OUT_STEP) : z + 1) : (z > 1 ? z - 1 : z / ZOOM_OUT_STEP));
 }
 
 window.addEventListener('resize', resize);
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   keysDown.add(key);
+  if (key === ' ') e.preventDefault(); // Space would otherwise scroll the page
+  if (key === '=' || key === '+') zoomStep(1);
+  if (key === '-') zoomStep(-1);
+  // One-shot actions ignore the keyboard's auto-repeat, so holding a key is one press.
+  if (e.repeat) return;
   if (key === 'f') swapHeldLight();
-  if (key === ' ') {
-    e.preventDefault(); // Space would otherwise scroll the page
-    act();
-  }
-  if (key === '=' || key === '+') zoomBy(1.25);
-  if (key === '-') zoomBy(1 / 1.25);
+  if (key === ' ') act();
   if (key === 'enter' && gameState.status === 'won') startLevel((levelIndex + 1) % levels.length);
   if (key === 'r') startLevel(levelIndex);
 });
 window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
+// A wheel click is one step. Trackpads send a stream of small deltas, so those add up to a step.
+let wheelTotal = 0;
 window.addEventListener('wheel', (e) => {
   e.preventDefault();
-  zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+  wheelTotal += e.deltaY;
+  if (Math.abs(wheelTotal) < 50) return;
+  zoomStep(wheelTotal < 0 ? 1 : -1);
+  wheelTotal = 0;
 }, { passive: false });
 
 resize();
+camera.zoom = Math.max(1, Math.round(pixelRatio)); // about the size the window's display scaling expects
 startLevel(levels.length - 1); // newest level first while designing levels; switch to 0 for a full playthrough
 
-requestAnimationFrame(draw);
+loadAssets().then(() => requestAnimationFrame(draw));
