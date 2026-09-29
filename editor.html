@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Shine level editor</title>
+    <style>
+      :root {
+        --bg: #16130f; --panel: #221d18; --line: #3a322a; --text: #e8e0d0; --muted: #9a8f80;
+        --accent: #f5c542; --bad: #e06a55; --good: #7cc47a;
+      }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+      body { display: flex; }
+      #side { width: 290px; flex: none; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 10px 12px; box-sizing: border-box; }
+      #main { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: flex-start; padding: 16px; }
+      h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 6px; }
+      h2:first-child { margin-top: 0; }
+      button, select, input, textarea { font: inherit; color: var(--text); background: #2e2720; border: 1px solid var(--line); border-radius: 4px; }
+      button { padding: 4px 8px; cursor: pointer; }
+      button:hover { border-color: var(--muted); }
+      button.on { border-color: var(--accent); color: var(--accent); }
+      .row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 4px; }
+      .tools button { width: 84px; text-align: left; }
+      label { color: var(--muted); }
+      textarea { width: 100%; box-sizing: border-box; height: 180px; font: 12px/1.35 ui-monospace, monospace; white-space: pre; }
+      #status { margin-top: 6px; }
+      #status.ok { color: var(--good); }
+      #status.bad { color: var(--bad); }
+      #props { min-height: 40px; }
+      #solutions button { display: block; width: 100%; text-align: left; margin-bottom: 3px; }
+      #solutions button.on { border-color: var(--accent); }
+      .hint { color: var(--muted); font-size: 12px; }
+      canvas { image-rendering: pixelated; cursor: crosshair; }
+    </style>
+  </head>
+  <body>
+    <div id="side">
+      <h2>Level</h2>
+      <div class="row"><select id="levelSelect"></select><button id="openBtn">Open</button></div>
+      <div class="hint">Your work is kept in this browser until you open another level.</div>
+
+      <h2>Paint</h2>
+      <div class="row tools" id="tools"></div>
+      <div class="row" id="pairRow"><label>Pair</label><select id="pairSelect"></select></div>
+      <div class="hint">Left-click / drag to paint, right-click to erase to floor. Select shows a cell's properties. Ctrl+wheel zooms.</div>
+
+      <h2>Try lights</h2>
+      <div class="row tools" id="tryTools"></div>
+      <div class="hint">Put a lit flashlight or candle down to see what it reaches. They're only here to try things: not part of the level, and not exported.</div>
+
+      <h2>Selected</h2>
+      <div id="props" class="hint">Nothing selected.</div>
+
+      <h2>View</h2>
+      <div class="row">
+        <select id="viewMode">
+          <option value="plain">Plain (no light)</option>
+          <option value="fog">Fog: lit areas show through</option>
+          <option value="bright">Bright: light as an overlay</option>
+        </select>
+      </div>
+      <div class="row"><label><input type="checkbox" id="showLine" checked /> 15% line (lights plates; empty-handed, you can stand inside it)</label></div>
+      <div class="row"><label><input type="checkbox" id="showPlates" checked /> Plate brightness</label></div>
+      <div class="row"><label><input type="checkbox" id="showHeld" /> The light in hand at the start</label></div>
+
+      <h2>Solve</h2>
+      <div class="row"><button id="solveBtn">Find every way to win</button><span id="solveStatus" class="hint"></span></div>
+      <div id="solutions"></div>
+      <div class="row"><button id="clearPreview">Clear solution preview</button></div>
+      <div class="hint">For flashlight-only levels: tries every mirror setting, drop cell and aim, then walks out under the fear rule. Click a solution to see it.</div>
+
+      <h2>Playtest</h2>
+      <div class="row"><button id="playFog">Play (fog view)</button><button id="playBright">Play (bright view)</button></div>
+      <div class="hint">Opens this level in the game in another tab. V switches view there (fog, bright, normal); R restarts. Play again here to reload it after edits.</div>
+
+      <h2>Start with</h2>
+      <div class="row"><label>In hand</label>
+        <select id="held"><option value="candle">candle</option><option value="flashlight">flashlight</option><option value="">nothing</option></select>
+      </div>
+      <div class="row"><label>Pocketed</label>
+        <label><input type="checkbox" id="stowCandle" /> candle</label>
+        <label><input type="checkbox" id="stowFlashlight" /> flashlight</label>
+      </div>
+      <div class="row"><label>Facing</label>
+        <select id="aim"><option>down</option><option>up</option><option>left</option><option>right</option></select>
+      </div>
+
+      <h2>Size</h2>
+      <div class="row"><label>Rows</label>
+        <button data-resize="top+">+ top</button><button data-resize="top-">− top</button>
+        <button data-resize="bottom+">+ bottom</button><button data-resize="bottom-">− bottom</button>
+      </div>
+      <div class="row"><label>Cols</label>
+        <button data-resize="left+">+ left</button><button data-resize="left-">− left</button>
+        <button data-resize="right+">+ right</button><button data-resize="right-">− right</button>
+      </div>
+
+      <h2>Export</h2>
+      <div id="status"></div>
+      <textarea id="code" readonly></textarea>
+      <div class="row"><button id="copyBtn">Copy code</button><span class="hint" id="copyHint"></span></div>
+    </div>
+    <div id="main"><canvas id="grid"></canvas></div>
+    <script type="module" src="/src/editor/editor.ts"></script>
+  </body>
+</html>

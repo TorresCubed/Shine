@@ -61,10 +61,13 @@ rule for real.
 Rules:
 - **Locked doors:** unlocked only while their plate is lit (shown red when locked, green when
   unlocked). Walk into one while it's unlocked to open it; once open it stays open.
-- **Plates and doors:** a light door slides open while its plate is lit to at least 15%, and slides
-  shut otherwise. You can only pass it fully open (so you can't light the plate, walk off, and
-  slip through as it closes). It won't close on you: if you're in the doorway, it waits until
-  you're through. While shut, a door blocks both movement and light, like a wall.
+- **Plates and doors:** doors sit on the edges between cells, so they take up no room. A light door
+  swings open while its plate is lit to at least 15%, and swings shut otherwise. You can only pass
+  it fully open (so you can't light the plate, walk off, and slip through as it closes). It never
+  swings into you: while you're in the cell it swings through, it stays put. Items on the floor
+  don't stop it (the leaf passes over them), so a door can't be jammed with a dropped light, and
+  since doors aren't cells, a light can never end up inside a shut door. While shut, a door
+  blocks movement and light; mid-swing, light spills through the gap.
 - **Candle reach limits door puzzles:** a cell counts as lit up to ~3 cells from the candle.
   With the exit directly behind a door, the drop spot must be exactly 2 cells in front of the
   door (any closer and you could just hold the candle there), which puts the exit right at the
@@ -73,8 +76,15 @@ Rules:
 - **Controls:** Space is the one action key, doing the first of: pull a lever in your cell; turn a
   turnable mirror in your cell; pick up the light on your cell; turn a turnable mirror you're
   facing close by (so pressing Space at a mirror never drops your light by mistake); drop the
-  light in hand. Walking over a light does nothing. F swaps lights, Q/E aim the flashlight
+  light in hand. Tapping (or clicking) does the same without the guesswork: tap a lever or turnable
+  mirror within reach (its cell or the next one over) to pull or turn it; tap yourself to pick up or
+  drop your light. Lights can't be dropped on a plate: a plate has to be lit from somewhere else, or
+  every puzzle would come down to "put the light on the plate". Nor on a mirror or lever (turnable
+  or not): nothing lands on those. Walking over a light does nothing. F swaps lights, Q/E aim the flashlight
   while standing still. R restarts the current level at any time.
+
+**No start glow:** the start square used to be softly lit (a real light, 1.5 cells). It's gone: the
+start is only as lit as your own light and the level's lamps make it.
 
 ### Act 2.5: Lamps and light that adds up
 Wall lamps built into the level: they hang on a wall and shine from its edge, reach one cell
@@ -132,21 +142,49 @@ Comes after the flashlight, because the candle's short range makes reflections b
 Mirrors are thin two-sided segments across their cell ('-', '|', '/', '\' in maps). They block
 movement only as that thin segment, so you can walk past one turned edge-on. Each is fixed,
 turnable by the player (Space, standing in its cell: a step of 22.5°), or turned by a lever (a step
-per pull); a pivot shows which (round = you, square = lever, none = fixed). Mirrors are a bit
+per pull). Nothing on the mirror shows which (for now: maybe three mirror arts later), so you find
+out by trying. Mirrors are a bit
 shorter than a cell, so you can stand in the cell beside one. A turn you cause shows completely,
 even the parts of the mirror in fog. You can see what a mirror you can see reflects.
-- **L16, mirrors (built):** turn a corner mirror so a dropped flashlight's beam bounces round onto
-  the exit door's plate.
-- Next: several mirrors in a chain; a mirror that must be turned a particular way to both light a
-  plate and a path.
+All of L16-23 are flashlight only, so the fear rule decides them: once the light is dropped, you
+walk only where its beam and reflections reach. Lights can't be dropped on a plate, so one beam has
+to cross the plate from somewhere and then carry on, via the mirrors, along the way out; each level
+is about setting the mirrors so it does both. Every one was checked with the real ray tracer over
+every mirror setting, drop cell (plates excluded) and aim, and each has exactly one solution.
+- **L16, mirrors (built):** turn a corner mirror so the beam from the plate bounces round the corner
+  and down to the exit.
+- **L17, a chain (built):** one fixed mirror and one to turn; the beam goes up, off both, and back
+  down the far corridor.
+- **L18, diagonals (built):** a fixed mirror at a 22.5° angle only takes light coming up a diagonal;
+  turn the corner mirror to an in-between angle to send it there. (A mirror turning light by 45°
+  catches only a sliver of the beam, too thin to walk; by 135° it catches it all, so diagonal legs
+  come from 135° turns.)
+- **L19, two to turn (built):** two turnable mirrors in an open room; a pillar blocks the one-mirror
+  shortcut.
+- **L20, one mirror, two jobs (built):** stage 1 sets the mirror so plate 1's beam reaches a locked
+  door; open it, fetch the flashlight, and re-turn the same mirror so plate 2's beam runs out
+  through that door to a light door and the exit.
+- **L21, two doors in a row (built):** one beam has to cross both plates and still light the way out.
+- **L22, order matters (built):** the mirror you need blocks the corridor once set; walk past it
+  edge-on and turn it from the plate's side.
+- **L23, capstone (built):** two doors in a row and a diagonal, both mirrors turnable, both at an
+  in-between angle.
+- Next: lever-turned mirrors.
+
+Map format: mirror characters give 0°, 45°, 90°, 135°; the level's `angles` option starts a mirror
+at an in-between step.
 
 ### Levers
 A lever is an alternative trigger to a plate (a level's `doors` option makes a pair's trigger a
 lever): Space, standing on it, toggles its door open and shut, no light needed, and turns any mirrors linked to it. A
 lever doesn't need a door; it can just turn mirrors.
-- **L17, levers (built):** the simplest lever door.
-- Next: levers that turn mirrors (the "lever-controlled hidden mirrors" from the concept), now
-  supported: `{ doors: { 2: 'lever' }, mirrors: { '5,4': 2 } }`.
+- **L24, levers (built):** the simplest lever door.
+- **L25, a lever that turns a mirror (built):** L16 again, but the corner mirror is lever-turned,
+  so only the lever by the start turns it, a step per pull.
+- **L26, one lever, two jobs (built):** the lever works the exit's lever door and turns the mirror;
+  the mirror is only right on a pull that leaves the door open (the third).
+- Next: a lever you have to reach after dropping the light (its cell lit by the beam), and levers
+  whose effect you can't see from where you pull them.
 
 ### Later
 From the project notes, order not decided yet:

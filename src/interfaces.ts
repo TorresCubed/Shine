@@ -5,8 +5,10 @@ export interface GridPos { gridX: number; gridY: number; }
 
 export type LightKind = 'candle' | 'flashlight';
 
-// A light on the floor. A flashlight points along `aimAngle` (and shines that way once picked up).
-export interface FloorLight extends GridPos { kind: LightKind; aimAngle: number; }
+// A light on the floor. Like the player, it lies anywhere (x, y, in px) but belongs to the cell it's
+// in (gridX, gridY), which is what rules use (one light to a cell, picking up from your cell). A
+// flashlight points along `aimAngle` (and shines that way once picked up).
+export interface FloorLight extends GridPos, Point { kind: LightKind; aimAngle: number; }
 
 // A wall lamp sits on a floor cell and shines from the edge of the wall next to it. `toWallX/Y` is
 // the unit step from the cell toward that wall.
@@ -20,12 +22,16 @@ export interface Mirror extends GridPos { step: number; control: 'fixed' | 'turn
 // A lever, pulled with Space while standing on it. It toggles its pair's door (if any) and turns the mirrors linked to it.
 export interface Lever extends GridPos { id: number; }
 
-// A door acts as a wall while closed. `slide` is the axis it slides open along (along its wall).
+// A door sits on edges between floor cells, one leaf per edge. Closed, a leaf lies along its edge;
+// opening, it swings 90° about its hinge (one end of the edge) into the `into` cell, ending flat
+// along that cell's side. Angles are in radians, from the hinge to the leaf's free end.
+export interface DoorLeaf { hinge: Point; closedAngle: number; openAngle: number; into: GridPos; from: GridPos; }
+// A door blocks light and movement while closed.
 //   light:  open while its plate is lit.
 //   locked: unlocked while its plate is lit; walk into it then and it opens for good.
 //   lever:  its lever toggles it open and shut.
 // `trigger` is the plate, or the lever, that works it.
-export interface Door { kind: 'light' | 'locked' | 'lever'; cells: GridPos[]; trigger: GridPos; slide: 'x' | 'y'; }
+export interface Door { kind: 'light' | 'locked' | 'lever'; leaves: DoorLeaf[]; trigger: GridPos; }
 
 export interface Level {
   name: string;

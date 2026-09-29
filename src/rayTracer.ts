@@ -1,6 +1,9 @@
 import type { Point, Scene } from "./interfaces";
 import { SCENE_STRIDE } from "./interfaces";
-import { RAY_REFINE_DEPTH, MAX_TRACED_RAYS, LIGHT_FALLOFF_STOPS } from "./consts";
+import {
+  RAY_REFINE_DEPTH, MAX_TRACED_RAYS, LIGHT_FALLOFF_STOPS, FLASHLIGHT_CONE, FLASHLIGHT_CORE, FLASHLIGHT_RAY_COUNT, MIRROR_EDGE_CORE,
+  FLASHLIGHT_SPILL_CONE, FLASHLIGHT_SPILL_STRENGTH, FLASHLIGHT_SPILL_RANGE, FLASHLIGHT_SPILL_RAY_COUNT, MAX_MIRROR_BOUNCES,
+} from "./consts";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
 // angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.
@@ -38,7 +41,36 @@ export interface LightGroup {
   origin: Point;
   radius: number; // the light's range, which its falloff runs across
   polys: Point[][];
-  beamAxis?: number; // a flashlight beam's centre direction from `origin` (set by the renderer)
+  // A beam (cast over less than a full circle): its centre direction from `origin` (through mirrors
+  // too) and half its width.
+  beamAxis?: number;
+  beamHalf?: number;
+  // How it dims toward its sides: a beam toward its edges, light off a mirror toward the edges of
+  // what the mirror catches. Each multiplies in (see fadeAt).
+  fades?: Fade[];
+  strength?: number; // how bright, 1 if unset (a flashlight's spill is dim)
+  spill?: boolean;   // spill (a flashlight's, or off a mirror's edges), not the light itself
+  mirrorSeg?: number; // light off a mirror: the scene segment of the mirror it last came off
+  flame?: number;    // a flame's flicker seed, the same for all its reflections (set by the renderer)
+}
+
+// A fade across a group, seen from its origin: full within `core` of `half` either side of `axis`,
+// then easing smoothly (smoothstep) to nothing at `half`.
+export interface Fade { axis: number; half: number; core: number }
+export const fadeProfile = (t: number, core: number) => {
+  if (t >= 1) return 0;
+  if (t <= core) return 1;
+  const u = (t - core) / (1 - core);
+  return 1 - u * u * (3 - 2 * u);
+}
+// How much of group `g`'s light reaches `p` for its fades (1 if it has none).
+export const fadeAt = (p: Point, g: LightGroup) => {
+  let k = 1;
+  for (const f of g.fades ?? []) {
+    const off = Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - f.axis;
+    k *= fadeProfile(Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) / f.half, f.core);
+  }
+  return k;
 }
 
 interface LightResult {
@@ -154,14 +186,25 @@ const refine = (
   refine(mid, b, depth - 1, ox, oy, budget, scene, maxLegs);
 }
 
-// Emits the strip polygon covering leg k of rays[first..last] into its light group.
-const emitStrip = (groups: Map<number, LightGroup>, k: number, first: number, last: number, origin: Point, radius: number) => {
+// Emits the strip polygon covering leg k of rays[first..last] into its light group. For a beam
+// (`beam`: its centre direction and half-width), a new group gets the beam's axis as seen from its
+// virtual source: each bounce mirrors the rays, so a ray at angle θ from the light leaves the
+// virtual source at ±θ + c (flipped once per bounce), and one ray gives c.
+const emitStrip = (groups: Map<number, LightGroup>, k: number, first: number, last: number, origin: Point, radius: number, beam: { axis: number; half: number } | null) => {
   const key = rays[first].keys[k];
   let group = groups.get(key);
   if (!group) {
     const l = k * LEG_STRIDE;
     const v = k === 0 ? origin : { x: rays[first].legs[l + 4], y: rays[first].legs[l + 5] };
     group = { depth: k, origin: v, radius, polys: [] };
+    if (k > 0) group.mirrorSeg = rays[first].hits[k - 1];
+    if (beam) {
+      const r = rays[first], sign = k % 2 === 0 ? 1 : -1;
+      const leaves = Math.atan2(r.legs[l + 3] - v.y, r.legs[l + 2] - v.x);
+      group.beamAxis = leaves + sign * (beam.axis - r.angle);
+      group.beamHalf = beam.half;
+      group.fades = [{ axis: group.beamAxis, half: beam.half, core: FLASHLIGHT_CORE }];
+    }
     groups.set(key, group);
   }
 
@@ -182,7 +225,8 @@ export const castLight = (
   baseRayCount: number,
   budget: number,
   scene: Scene,
-  maxBounces: number
+  maxBounces: number,
+  mirrorSpill = false, // add spill past the edges of the light off each mirror (see addMirrorSpill)
 ): LightResult => {
   const maxLegs = maxBounces + 1;
   // Pooled rays only ever grow: a ray with room for more legs works fine for fewer.
@@ -206,17 +250,38 @@ export const castLight = (
   // Walk the rays once per leg depth, joining consecutive runs that share the same mirror chain.
   // Depth 0 goes first, so the direct light is always groups[0].
   const groups = new Map<number, LightGroup>();
+  const beam = span < Math.PI * 2 - 1e-9 ? { axis: startAngle + span / 2, half: span / 2 } : null;
   for (let k = 0; k < maxLegs; k++) {
     let runStart = -1;
     for (let i = 0; i < rays.length; i++) {
       const a = rays[i], b = rays[i + 1];
       const joined = b !== undefined && a.legCount > k && b.legCount > k && a.keys[k] === b.keys[k];
       if (joined && runStart < 0) runStart = i;
-      if (!joined && runStart >= 0) { emitStrip(groups, k, runStart, i, origin, budget); runStart = -1; }
+      if (!joined && runStart >= 0) { emitStrip(groups, k, runStart, i, origin, budget, beam); runStart = -1; }
     }
   }
 
-  return { groups: [...groups.values()], rayCount: rays.length };
+  // Light off a mirror fades toward the edges of what the mirror catches: the angle its lit area
+  // spans from the virtual source.
+  for (const g of groups.values()) {
+    if (g.depth === 0) continue;
+    let sx = 0, sy = 0;
+    for (const poly of g.polys) for (const p of poly) {
+      const dx = p.x - g.origin.x, dy = p.y - g.origin.y, len = Math.hypot(dx, dy) || 1;
+      sx += dx / len; sy += dy / len;
+    }
+    const axis = Math.atan2(sy, sx);
+    let half = 0;
+    for (const poly of g.polys) for (const p of poly) {
+      const off = Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - axis;
+      half = Math.max(half, Math.abs(Math.atan2(Math.sin(off), Math.cos(off))));
+    }
+    if (half > 1e-6) (g.fades ??= []).push({ axis, half, core: MIRROR_EDGE_CORE });
+  }
+
+  const result = [...groups.values()];
+  if (mirrorSpill) for (const g of [...result]) if (g.depth > 0) result.push(...addMirrorSpill(g, scene));
+  return { groups: result, rayCount: rays.length };
 }
 
 // How far from `from` toward `to` you get before hitting any segment (or all the way).
@@ -262,11 +327,72 @@ const insidePolygon = (p: Point, poly: Point[]) => {
 export const insideAny = (p: Point, polys: Point[][]) => polys.some(poly => insidePolygon(p, poly));
 
 // Total brightness at `p` across every light group that reaches it. Light adds, same as on screen.
+// A beam, and light off a mirror, is dimmer toward its edges (fadeAt), a spill dimmer overall (strength).
 export const brightnessAt = (p: Point, groups: LightGroup[]) => {
   let total = 0;
   for (const g of groups) {
     if (!insideAny(p, g.polys)) continue;
-    total += falloffAt(Math.hypot(p.x - g.origin.x, p.y - g.origin.y) / g.radius);
+    const across = fadeAt(p, g);
+    total += falloffAt(Math.hypot(p.x - g.origin.x, p.y - g.origin.y) / g.radius) * across * (g.strength ?? 1);
   }
   return total;
+}
+
+// Spill off a mirror: light scattering off the edges of what a mirror reflects, as a flashlight's
+// beam spills past its edge. Just past each side of the reflection (as seen from its virtual source)
+// the light carries on, dim (FLASHLIGHT_SPILL_STRENGTH), fading out over the same extra width a
+// flashlight's spill adds to its beam, and shadowed by whatever it meets (it doesn't bounce again).
+// It starts on the mirror's line just past its end, so it only spills where the mirror stops, not
+// into a shadow cast across the mirror.
+const MIRROR_SPILL_RAYS = 6; // per side
+const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
+  const window = g.fades?.[g.fades.length - 1];
+  if (g.mirrorSeg === undefined || g.mirrorSeg < 0 || !window || g.spill) return [];
+  const c = scene.coords, o = g.mirrorSeg * SCENE_STRIDE;
+  const mx = c[o], my = c[o + 1], ex = c[o + 2] - mx, ey = c[o + 3] - my;
+  const extra = window.half * (FLASHLIGHT_SPILL_CONE / FLASHLIGHT_CONE - 1);
+  const others = g.fades!.slice(0, -1); // a beam's own fade still applies
+  const spills: LightGroup[] = [];
+  for (const side of [-1, 1]) {
+    const starts: Point[] = [], ends: Point[] = [];
+    for (let i = 0; i <= MIRROR_SPILL_RAYS; i++) {
+      const a = window.axis + side * (window.half + extra * i / MIRROR_SPILL_RAYS);
+      const dx = Math.cos(a), dy = Math.sin(a);
+      // Where this ray crosses the mirror's line: it must be past the mirror's end.
+      const denom = dx * ey - dy * ex;
+      if (Math.abs(denom) < 1e-12) continue;
+      const wx = mx - g.origin.x, wy = my - g.origin.y;
+      const t = (wx * ey - wy * ex) / denom, u = (wx * dy - wy * dx) / denom;
+      if (t <= 0 || (u >= 0 && u <= 1) || t >= g.radius) continue;
+      const start = { x: g.origin.x + dx * t, y: g.origin.y + dy * t };
+      const from = { x: start.x + dx * 0.01, y: start.y + dy * 0.01 };
+      const d = clearDistance(scene, from, { x: from.x + dx * (g.radius - t), y: from.y + dy * (g.radius - t) });
+      starts.push(start);
+      ends.push({ x: from.x + dx * d, y: from.y + dy * d });
+    }
+    if (starts.length < 2) continue;
+    spills.push({
+      depth: g.depth, origin: g.origin, radius: g.radius, polys: [[...starts, ...ends.reverse()]],
+      strength: FLASHLIGHT_SPILL_STRENGTH * (g.strength ?? 1), spill: true, beamAxis: g.beamAxis, beamHalf: g.beamHalf,
+      flame: g.flame,
+      fades: [...others, { axis: window.axis, half: window.half + extra, core: window.half / (window.half + extra) }],
+    });
+  }
+  return spills;
+}
+
+// A flashlight from `at` aimed along `aim`: its beam, and its spill (wider, dimmer, shorter), each
+// with its own shadows and reflections. Shared by the game and the level editor, so both see the
+// same light.
+export const castFlashlight = (at: Point, aim: number, range: number, scene: Scene) => {
+  const beam = castLight(at, aim - FLASHLIGHT_CONE / 2, FLASHLIGHT_CONE, FLASHLIGHT_RAY_COUNT, range, scene, MAX_MIRROR_BOUNCES, true);
+  const spill = castLight(at, aim - FLASHLIGHT_SPILL_CONE / 2, FLASHLIGHT_SPILL_CONE, FLASHLIGHT_SPILL_RAY_COUNT,
+    Math.max(1, range * FLASHLIGHT_SPILL_RANGE), scene, MAX_MIRROR_BOUNCES);
+  // The spill fades from where the beam ends (its first fade is its own, across it).
+  for (const g of spill.groups) {
+    g.strength = FLASHLIGHT_SPILL_STRENGTH;
+    g.spill = true;
+    if (g.fades?.[0]) g.fades[0].core = FLASHLIGHT_CONE / FLASHLIGHT_SPILL_CONE;
+  }
+  return { groups: [...beam.groups, ...spill.groups], rayCount: beam.rayCount + spill.rayCount };
 }

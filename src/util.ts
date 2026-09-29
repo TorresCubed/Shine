@@ -24,6 +24,15 @@ export const segmentNearSquare = (s: Segment, c: Point, half: number, margin: nu
   return false;
 }
 
+// Ease-in-out cubic: 0 to 1, starting and stopping gently. Used for every animated transition.
+export const easeInOut = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
+// Whether two segments cross (touching ends count).
+export const segmentsCross = (a: Segment, b: Segment) => {
+  const side = (s: Segment, x: number, y: number) => Math.sign((s.x2 - s.x1) * (y - s.y1) - (s.y2 - s.y1) * (x - s.x1));
+  return side(a, b.x1, b.y1) * side(a, b.x2, b.y2) <= 0 && side(b, a.x1, a.y1) * side(b, a.x2, a.y2) <= 0;
+}
+
 // Several polygons as subpaths of one path, so they fill in a single call.
 export const polygonsPath = (targetCtx: CanvasRenderingContext2D, polygons: Point[][]) => {
   targetCtx.beginPath();

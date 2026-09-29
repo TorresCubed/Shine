@@ -1,12 +1,21 @@
-import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Wall } from "./interfaces";
+import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Segment, Wall } from "./interfaces";
 import { GRID_SIZE, PLAYER_HALF_SIZE } from "./consts";
-import { cellCenter } from "./util";
+import { cellCenter, easeInOut } from "./util";
 
 // Mutable game state. `let` exports are live bindings: importers see the new values after
 // loadLevel reassigns them.
 
 export const keysDown = new Set<string>();
-export const camera = { zoom: 1 }; // screen px per world px
+// The on-screen stick (touchControls.ts): how far it's pushed, each axis -1..1 and at most 1 long
+// (0, 0 when let go). `touch` turns on at the first touch, for touch-only controls and prompts.
+export const stick = { x: 0, y: 0 };
+export const input = { touch: false };
+// zoom: screen px per world px. fitted: still at the level's fit zoom (it re-fits if the screen
+// changes size). pan: how far (world px) a two-finger drag has moved the view off the player; it
+// drifts back once you walk. pinching: a two-finger gesture is under way. intro: a new level's
+// zoom-in from the overview is still to come (zooming yourself cancels it). glideMs: how long the next
+// zoom change takes to glide (null: ZOOM_EASE_MS).
+export const camera = { zoom: 1, fitted: true, panX: 0, panY: 0, pinching: false, intro: false, glideMs: null as number | null };
 
 export const player = {
   x: 0,     // centre, in px; moves freely
@@ -26,41 +35,56 @@ export const lightState: { held: LightKind | null; stowed: LightKind[]; dropped:
 // `startedAt` is on the performance.now() / requestAnimationFrame clock.
 export const gameState: { status: 'playing' | 'won'; startedAt: number } = { status: 'playing', startedAt: 0 };
 
-// Doors: openAmount 0 = shut, 1 = fully slid open. seenOpenAmount is how open it was the last time
+// Doors: openAmount 0 = shut, 1 = fully swung open. seenOpenAmount is how open it was the last time
 // the player saw it, which is what fog of war shows. triggerOn: its plate is lit, or its lever is
-// on. opened: a locked door the player has opened (it stays open).
-export type DoorState = Door & { openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean };
+// on. opened: a locked door the player has opened (it stays open). everSeen: the player has seen it
+// at some point. wasUnlocked: a locked door's state last frame (null before its first), and
+// lockFlashAt when it last changed (performance.now() clock), for the flash that shows it even in fog.
+// showWhole: this frame it's seen, or (seen before) it's doing something, so it's shown as it is,
+// all of it, even in fog (the renderer refreshes its memory).
+export type DoorState = Door & {
+  openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean;
+  everSeen: boolean; wasUnlocked: boolean | null; lockFlashAt: number; showWhole: boolean;
+};
 // Mirrors: `step` is where it's turning to; `shownStep` is where it actually is (fractional mid-turn),
-// which light, collision and drawing all use, with `turnLeft` steps still to go (always forward).
-// seenStep is the orientation the player last saw it at, for fog of war. followTurn: the player
-// caused this turn, so they see it through, even the parts of the mirror in fog.
-export type MirrorState = Mirror & { shownStep: number; turnLeft: number; seenStep: number; followTurn: boolean };
-export type LeverState = Lever & { on: boolean };
+// which light, collision and drawing all use, with `turnLeft` steps still to go (always forward) at
+// `turnSpeed` steps a second.
+// seenStep is the orientation the player last saw it at, for fog of war. everSeen: the player has
+// seen it at some point, so they see it turn (all of it) whatever turns it, even in fog.
+export type MirrorState = Mirror & { shownStep: number; turnLeft: number; turnSpeed: number; seenStep: number; everSeen: boolean };
+// pulled: pulled since the renderer last showed it (all of it, even in fog).
+export type LeverState = Lever & { on: boolean; pulled: boolean };
 
 export let levelWalls: Wall[] = [];
 export let doors: DoorState[] = [];
-export let walls: Wall[] = []; // levelWalls + whatever part of each door is still in the way
 export let mirrors: MirrorState[] = [];
 export let levers: LeverState[] = [];
 export let lamps: Lamp[] = [];
 export let start: GridPos = { gridX: 0, gridY: 0 };
 export let goal: GridPos = { gridX: 0, gridY: 0 };
 
-// What's left of a sliding door at `openAmount`: each cell's panel shrinks toward its left/top edge.
-// (Movement treats the whole cell as blocked until fully open; see isWalkable.)
-export const doorPanels = (door: Door, openAmount: number): Wall[] => {
-  if (openAmount >= 1) return [];
-  const left = 1 - openAmount;
-  return door.cells.map(c => door.slide === 'x'
-    ? { x: c.gridX * GRID_SIZE, y: c.gridY * GRID_SIZE, w: GRID_SIZE * left, h: GRID_SIZE }
-    : { x: c.gridX * GRID_SIZE, y: c.gridY * GRID_SIZE, w: GRID_SIZE, h: GRID_SIZE * left });
+// A door's leaves at `openAmount`, each swung that far (eased, so it starts and stops gently) from
+// along its edge towards flat against its `into` cell's side. They block light like a wall's edge.
+export const doorLeaves = (door: Door, openAmount: number): Segment[] => {
+  const t = easeInOut(openAmount);
+  return door.leaves.map(l => {
+    const a = l.closedAngle + (l.openAngle - l.closedAngle) * t;
+    return { x1: l.hinge.x, y1: l.hinge.y, x2: l.hinge.x + Math.cos(a) * GRID_SIZE, y2: l.hinge.y + Math.sin(a) * GRID_SIZE };
+  });
 }
 
-export const setDoorOpenAmount = (door: DoorState, amount: number) => {
-  if (door.openAmount === amount) return;
-  door.openAmount = amount;
-  walls = [...levelWalls, ...doors.flatMap(d => doorPanels(d, d.openAmount))];
-}
+// Every door leaf in the level, where it is now.
+export const allDoorLeaves = () => doors.flatMap(d => doorLeaves(d, d.openAmount));
+
+// When each thing last got a scale punch (keyed 'player' or 'lever x,y'), on the performance.now()
+// clock. The renderer draws it popping.
+export const punches = new Map<string, number>();
+export const punch = (key: string) => punches.set(key, performance.now());
+
+// Shines: a glint where a light was just picked up or dropped (world px, performance.now() clock).
+// The renderer draws each for SHINE_MS, then drops it.
+export const shines: { x: number; y: number; at: number }[] = [];
+export const shine = (x: number, y: number) => shines.push({ x, y, at: performance.now() });
 
 // Every cell the player's footprint overlaps with its centre at (x, y).
 export const footprintCells = (x: number, y: number): GridPos[] => {
@@ -74,10 +98,11 @@ export const footprintCells = (x: number, y: number): GridPos[] => {
 
 export const loadLevel = (level: Level) => {
   levelWalls = level.walls;
-  doors = level.doors.map(d => ({ ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false }));
-  walls = [...levelWalls, ...doors.flatMap(d => doorPanels(d, 0))];
-  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, seenStep: m.step, followTurn: false }));
-  levers = level.levers.map(l => ({ ...l, on: false }));
+  doors = level.doors.map(d => ({
+    ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false, everSeen: false, wasUnlocked: null, lockFlashAt: -Infinity, showWhole: false,
+  }));
+  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, turnSpeed: 0, seenStep: m.step, everSeen: false }));
+  levers = level.levers.map(l => ({ ...l, on: false, pulled: false }));
   lamps = level.lamps;
   start = level.start;
   goal = level.goal;
@@ -87,5 +112,6 @@ export const loadLevel = (level: Level) => {
   lightState.dropped = level.startDropped.map(d => ({ ...d }));
   lightState.pickups = level.pickups.map(p => ({ ...p }));
   gameState.status = 'playing';
+  shines.length = 0;
   gameState.startedAt = performance.now();
 }

@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Shine</title>
     <style>
       html, body {
@@ -9,6 +10,13 @@
         padding: 0;
         overflow: hidden;
         background: black;
+      }
+      /* Taps are game input: no double-tap zoom, scrolling or text selection. */
+      #game {
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
       }
     </style>
   </head>

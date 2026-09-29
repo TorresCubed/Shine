@@ -13,20 +13,23 @@ const wallEdges = (w: Wall): Segment[] => {
   ];
 }
 
-// Rebuilt only when the geometry changes (doors sliding, mirrors turning), detected by a cheap
+// Walls, mirrors, and other light-blocking segments (door leaves), which absorb light like walls.
+// Rebuilt only when the geometry changes (doors swinging, mirrors turning), detected by a cheap
 // content fingerprint.
 let cachedFingerprint = '';
 let cachedScene: Scene = { count: 0, coords: new Float64Array(0), mirrorIndex: new Int32Array(0), mirrorCount: 0 };
 
-export const getScene = (walls: Wall[], mirrors: MirrorState[]): Scene => {
+export const getScene = (walls: Wall[], mirrors: MirrorState[], blockers: Segment[] = []): Scene => {
   let fingerprint = '';
   for (const w of walls) fingerprint += `${w.x},${w.y},${w.w},${w.h};`;
   for (const m of mirrors) fingerprint += `${m.gridX},${m.gridY},${m.shownStep};`;
+  for (const b of blockers) fingerprint += `${b.x1},${b.y1},${b.x2},${b.y2};`;
   if (fingerprint === cachedFingerprint) return cachedScene;
 
   const segs: Segment[] = [];
   const owners: number[] = [];
   for (const w of walls) for (const s of wallEdges(w)) { segs.push(s); owners.push(-1); }
+  for (const b of blockers) { segs.push(b); owners.push(-1); }
   mirrors.forEach((m, i) => { segs.push(mirrorSegment(m, m.shownStep)); owners.push(i); });
 
   const coords = new Float64Array(segs.length * SCENE_STRIDE);

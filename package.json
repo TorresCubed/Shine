@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "host": "vite --host --port 80",
+    "share": "tsc && vite build && vite preview --host --port 80"
   },
   "devDependencies": {
     "typescript": "~6.0.2",
