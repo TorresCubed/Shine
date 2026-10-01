@@ -1,16 +1,5 @@
-// What the menus and hints say about each level: its name, and (for a level that brings in something
-// new) a hint on how to use it, for keyboard and for touch. Titles are indexed by level number - 1,
-// in step with levels.ts.
-
-export const LEVEL_TITLES = [
-  'An Empty Room', 'The Long Way Round', 'A Small Maze',
-  'Light Plates', 'Letting Go', 'Locked', 'Lamplight',
-  'The Flashlight', 'A Far Plate', 'One Beam, Two Jobs', 'From a Distance',
-  'Two Lights, Two Doors', 'Going Back', 'The Chain', 'Everything at Once',
-  'Mirrors', 'A Chain of Mirrors', 'Diagonals', 'Two to Turn', 'Two Stages',
-  'Two Doors, One Beam', 'Order Matters', 'Both at Once',
-  'Levers', 'The Wheel', 'One Lever, Two Jobs',
-];
+// Hints for the levels that bring in something new (by level number, from 1), for keyboard and for
+// touch, and the controls for the How to Play screen. Levels go by number only.
 
 type Hint = { keys: string; touch: string };
 export const LEVEL_HINTS: Record<number, Hint> = {

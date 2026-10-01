@@ -1,6 +1,6 @@
 import { GAME_TITLE, TAGLINE, AUTHOR, LINKS, CREDITS } from "./about";
-import { LEVEL_TITLES, CONTROLS } from "./levelInfo";
-import { isCompleted, completedCount, lastPlayed, resetProgress } from "./progress";
+import { CONTROLS } from "./levelInfo";
+import { isCompleted, isPlayed, completedCount, lastPlayed, resetProgress } from "./progress";
 import { input } from "./state";
 import { showSplash } from "./splash";
 import flashlightUrl from "./assets/droppedFlashlight.png";
@@ -44,7 +44,7 @@ const button = (label: string, onClick: () => void, cls = '') => {
 }
 const back = () => button('Back', goBack, 'menu-back');
 
-const levelLabel = (index: number) => `Level ${index + 1} · ${LEVEL_TITLES[index] ?? ''}`;
+const levelLabel = (index: number) => `Level ${index + 1}`;
 
 const screens: Record<Screen, () => HTMLElement[]> = {
   title: () => {
@@ -67,8 +67,9 @@ const screens: Record<Screen, () => HTMLElement[]> = {
     const items: HTMLElement[] = [el('h2', '', 'Levels'), el('p', 'muted', `${done} of ${handlers.levelCount} finished`)];
     const grid = el('div', 'level-grid');
     for (let n = 1; n <= handlers.levelCount; n++) {
-      const b = button('', () => handlers.play(n - 1), `level-tile${isCompleted(n) ? ' done' : ''}`);
-      b.append(el('span', 'level-number', String(n)), el('span', 'level-name', LEVEL_TITLES[n - 1] ?? ''));
+      // Finished, played, or never played: in fog, like a room you've not been into yet.
+      const b = button('', () => handlers.play(n - 1), `level-tile${isCompleted(n) ? ' done' : isPlayed(n) ? '' : ' unplayed'}`);
+      b.append(el('span', 'level-number', String(n)));
       if (isCompleted(n)) b.append(el('span', 'level-check', '✓'));
       b.title = levelLabel(n - 1);
       grid.append(b);
@@ -208,10 +209,10 @@ export const showHint = (text: { keys: string; touch: string }, ms = 12000) => {
 }
 export const hideHint = () => { clearTimeout(hintTimer); hint.classList.remove('shown'); };
 
-// The level's number and name, across the top for a few seconds as it starts.
+// The level's number, across the top for a few seconds as it starts.
 let cardTimer: ReturnType<typeof setTimeout> | undefined;
 export const showLevelCard = (index: number) => {
-  levelCard.replaceChildren(el('span', 'card-number', `Level ${index + 1}`), el('span', 'card-title', LEVEL_TITLES[index] ?? ''));
+  levelCard.replaceChildren(el('span', 'card-title', levelLabel(index)));
   levelCard.classList.add('shown');
   clearTimeout(cardTimer);
   cardTimer = setTimeout(() => levelCard.classList.remove('shown'), 3500);
@@ -230,6 +231,4 @@ export const initMenu = (h: Handlers) => {
   // (Only if the press began out there too: one dragged out of the box, scrolling it, isn't a back.)
   let downOnBackdrop = false;
   overlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); downOnBackdrop = e.target === overlay; });
-  overlay.addEventListener('click', (e) => { if (e.target === overlay && downOnBackdrop) goBack(); });
-  if (LEVEL_TITLES.length !== h.levelCount) console.warn(`levelInfo has ${LEVEL_TITLES.length} level titles for ${h.levelCount} levels`);
-}
+  overlay.addEventListener('click', (e) => { if (e.target === overlay && downOnBackdrop) goBack(); });}

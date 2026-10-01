@@ -131,16 +131,18 @@
       .menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::before,
       .menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::after { opacity: 1; }
 
-      .level-grid {
-        text-align: left; margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+      .level-grid { margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
       .level-tile {
-        position: relative; min-width: 0; padding: 8px 10px 10px; text-align: left;
-        display: flex; flex-direction: column; gap: 2px; line-height: 1.2;
+        position: relative; min-width: 0; aspect-ratio: 1; padding: 0;
+        display: flex; align-items: center; justify-content: center;
       }
-      .level-number { font: 700 20px var(--display); color: var(--gold-dim); }
-      .level-name { font-size: 15px; }
-      .level-check { position: absolute; top: 6px; right: 9px; color: #7cc47a; font-size: 16px; }
+      .level-number { font: 700 22px var(--display); color: var(--gold-dim); }
+      .level-check { position: absolute; top: 3px; right: 6px; color: #7cc47a; font-size: 13px; }
       .level-tile.done .level-number { color: var(--gold); }
+      /* Never played: in fog, grayed and dark like a remembered room, until your pointer lights it. */
+      .level-tile.unplayed { background: rgba(255, 255, 255, 0.015); border-color: rgba(255, 255, 255, 0.06); }
+      .level-tile.unplayed .level-number { color: #4a4a4a; transition: color 160ms; }
+      .level-tile.unplayed:is(:hover, :focus-visible) .level-number { color: var(--gold-dim); }
 
       .rules { text-align: left; margin-bottom: 14px; }
       .rules p { margin: 0 0 8px; }
@@ -198,7 +200,6 @@
       }
       .hint.touch { bottom: calc(env(safe-area-inset-bottom) + 96px); } /* above the aim buttons */
       .level-card { top: calc(env(safe-area-inset-top) + 18px); display: flex; flex-direction: column; gap: 2px; max-width: calc(100vw - 140px); }
-      .card-number { font: 500 13px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-dim); }
       .card-title { font: 500 26px var(--display); letter-spacing: 0.05em; color: var(--gold); text-shadow: 0 0 14px rgba(0, 0, 0, 0.9); }
       .hint.shown, .level-card.shown { opacity: 1; }
     </style>
