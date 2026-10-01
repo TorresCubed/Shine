@@ -1,7 +1,9 @@
 import { GAME_TITLE, TAGLINE, AUTHOR, LINKS, CREDITS } from "./about";
-import { LEVEL_TITLES, CHAPTERS, CONTROLS, chapterOf } from "./levelInfo";
+import { LEVEL_TITLES, CONTROLS } from "./levelInfo";
 import { isCompleted, completedCount, lastPlayed, resetProgress } from "./progress";
 import { input } from "./state";
+import { showSplash } from "./splash";
+import flashlightUrl from "./assets/droppedFlashlight.png";
 
 // The menus: an HTML overlay over the game canvas (which keeps drawing behind it), so text is crisp
 // and buttons work alike by mouse, touch and keyboard (Tab / Enter, Esc to go back). While it's open
@@ -63,20 +65,15 @@ const screens: Record<Screen, () => HTMLElement[]> = {
   levels: () => {
     const done = completedCount();
     const items: HTMLElement[] = [el('h2', '', 'Levels'), el('p', 'muted', `${done} of ${handlers.levelCount} finished`)];
-    const scroll = el('div', 'level-scroll');
-    for (const chapter of CHAPTERS) {
-      scroll.append(el('h3', 'chapter', chapter.name));
-      const grid = el('div', 'level-grid');
-      for (let n = chapter.first; n <= Math.min(chapter.last, handlers.levelCount); n++) {
-        const b = button('', () => handlers.play(n - 1), `level-tile${isCompleted(n) ? ' done' : ''}`);
-        b.append(el('span', 'level-number', String(n)), el('span', 'level-name', LEVEL_TITLES[n - 1] ?? ''));
-        if (isCompleted(n)) b.append(el('span', 'level-check', '✓'));
-        b.title = levelLabel(n - 1);
-        grid.append(b);
-      }
-      scroll.append(grid);
+    const grid = el('div', 'level-grid');
+    for (let n = 1; n <= handlers.levelCount; n++) {
+      const b = button('', () => handlers.play(n - 1), `level-tile${isCompleted(n) ? ' done' : ''}`);
+      b.append(el('span', 'level-number', String(n)), el('span', 'level-name', LEVEL_TITLES[n - 1] ?? ''));
+      if (isCompleted(n)) b.append(el('span', 'level-check', '✓'));
+      b.title = levelLabel(n - 1);
+      grid.append(b);
     }
-    items.push(scroll);
+    items.push(grid);
     const row = el('div', 'menu-row');
     if (done > 0) row.append(button('Reset progress', () => {
       if (confirm('Forget which levels you\'ve finished?')) { resetProgress(); render(); }
@@ -171,6 +168,7 @@ const render = () => {
 // Opens `screen` on top of whatever's open (Back returns to it).
 export const open = (screen: Screen) => {
   hideHint();
+  if (screen === 'title') showSplash(); // the candle behind it (already lit, unless it's opening)
   stack.push(screen);
   render();
 }
@@ -210,11 +208,10 @@ export const showHint = (text: { keys: string; touch: string }, ms = 12000) => {
 }
 export const hideHint = () => { clearTimeout(hintTimer); hint.classList.remove('shown'); };
 
-// The level's number, chapter and name, across the top for a few seconds as it starts.
+// The level's number and name, across the top for a few seconds as it starts.
 let cardTimer: ReturnType<typeof setTimeout> | undefined;
 export const showLevelCard = (index: number) => {
-  const n = index + 1, chapter = chapterOf(n);
-  levelCard.replaceChildren(el('span', 'card-chapter', chapter ? `${chapter.name} · Level ${n}` : `Level ${n}`), el('span', 'card-title', LEVEL_TITLES[index] ?? ''));
+  levelCard.replaceChildren(el('span', 'card-number', `Level ${index + 1}`), el('span', 'card-title', LEVEL_TITLES[index] ?? ''));
   levelCard.classList.add('shown');
   clearTimeout(cardTimer);
   cardTimer = setTimeout(() => levelCard.classList.remove('shown'), 3500);
@@ -222,11 +219,17 @@ export const showLevelCard = (index: number) => {
 
 export const initMenu = (h: Handlers) => {
   handlers = h;
+  // The flashlight that lights up a hovered option (see index.html).
+  document.documentElement.style.setProperty('--flashlight', `url("${flashlightUrl}")`);
   overlay.append(panel);
   document.body.append(overlay, menuButton, hint, levelCard);
   menuButton.title = menuButton.ariaLabel = 'Menu';
   menuButton.addEventListener('click', () => { menuButton.blur(); open('pause'); });
-  // Presses on the overlay's backdrop don't reach the game underneath.
-  overlay.addEventListener('pointerdown', (e) => e.stopPropagation());
+  // Presses on the overlay's backdrop don't reach the game underneath. A click outside the box (on a
+  // screen with one: not the title or the ending) goes back, as Back does.
+  // (Only if the press began out there too: one dragged out of the box, scrolling it, isn't a back.)
+  let downOnBackdrop = false;
+  overlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); downOnBackdrop = e.target === overlay; });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay && downOnBackdrop) goBack(); });
   if (LEVEL_TITLES.length !== h.levelCount) console.warn(`levelInfo has ${LEVEL_TITLES.length} level titles for ${h.levelCount} levels`);
 }

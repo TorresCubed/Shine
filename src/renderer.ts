@@ -6,6 +6,7 @@ import type { LightGroup, Penumbra } from "./rayTracer";
 import type { GridPos, LightKind, Point, Scene, Segment, Wall } from "./interfaces";
 import { updateDoors } from "./doorLogic";
 import { screenDark, cardShown } from "./transition";
+import { isMenuOpen } from "./menu";
 import {
   CANDLE_RADIUS, LAMP_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE, MAX_MIRROR_BOUNCES, GRID_SIZE, TARGET_FPS,
   CANDLE_RAY_COUNT, LIT_FLOOR_STRENGTH, LIT_FLOOR_TINT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, FOG_FLOOR_BRIGHTNESS, FOG_VISIBILITY, MEMORY_FADE_S, MEMORY_FADE_MIN,
@@ -1221,7 +1222,7 @@ const drawTransition = (now: number) => {
     ctx.fillStyle = `rgba(0, 0, 0, ${dark.toFixed(3)})`;
     ctx.fillRect(0, 0, w, h);
   }
-  if (card > 0) drawLevelComplete(card);
+  if (card > 0 && !isMenuOpen()) drawLevelComplete(card); // (not through a menu: it shows through)
 }
 
 export const draw = (now: number) => {

@@ -9,6 +9,7 @@ import { act, swapHeldLight, tapAt, fear } from "./playerLogic";
 import { initMenu, open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from "./menu";
 import { LEVEL_HINTS } from "./levelInfo";
 import { markCompleted, markPlayed, lastPlayed } from "./progress";
+import { playSplash, skipSplash, splashPlaying, hideSplash } from "./splash";
 
 // The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -155,10 +156,10 @@ const zoomStep = (dir: 1 | -1) => {
   camera.zoom = clampZoom(dir > 0 ? (z < 1 ? Math.min(1, z * ZOOM_OUT_STEP) : z + 1) : (z > 1 ? z - 1 : z / ZOOM_OUT_STEP));
 }
 
-// On from the Level Complete card: the next level, or after the last, the ending.
+// On from the Level Complete card to the next level. (The last level goes to the ending instead: see
+// watchPlay.)
 const nextLevel = () => {
-  if (gameState.status !== 'won' || leaving) return;
-  if (levelIndex === playLevels.length - 1 && !playtest) { hideHint(); open('ending'); return; }
+  if (gameState.status !== 'won' || leaving || isMenuOpen()) return;
   leaveTo((levelIndex + 1) % playLevels.length, LEVEL_FADE_OUT_MS);
 };
 const restart = () => { if (playing || playtest) leaveTo(levelIndex, RESTART_FADE_MS, RESTART_FADE_MS * 2); };
@@ -166,6 +167,7 @@ const restart = () => { if (playing || playtest) leaveTo(levelIndex, RESTART_FAD
 // A level picked from the menus: always starts afresh (card, hint, the zoom-in), even the one behind.
 const play = (index: number) => {
   close();
+  hideSplash();
   hideHint();
   playing = true;
   markStarted();
@@ -179,7 +181,11 @@ let wasWon = false, strandedMs = 0, strandHinted = false, lastWatch = 0, lastSpo
 const STRANDED_HINT_MS = 2000;
 const watchPlay = (now: number) => {
   const won = gameState.status === 'won';
-  if (won && !wasWon && playing && !playtest) markCompleted(levelIndex + 1);
+  if (won && !wasWon && playing && !playtest) {
+    markCompleted(levelIndex + 1);
+    // The last level has no Level Complete card: it's straight on to the ending.
+    if (levelIndex === playLevels.length - 1) { hideHint(); open('ending'); }
+  }
   wasWon = won;
   const stuck = playing && !won && !isMenuOpen() && now - fear.stoppedAt < 150
     && Math.hypot(player.x - lastSpot.x, player.y - lastSpot.y) < 0.5;
@@ -199,6 +205,7 @@ const letGo = () => { keysDown.clear(); stick.x = stick.y = 0; };
 window.addEventListener('resize', resize);
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
+  if (splashPlaying()) { skipSplash(); return; } // any key skips the opening
   if (key === 'escape' && !playtest) { letGo(); onEscape(); return; }
   if (isMenuOpen()) return; // the menus take keys for their buttons (Tab, Enter, Space)
   keysDown.add(key);
@@ -247,7 +254,7 @@ if (playtest || asked !== null) {
 } else {
   const last = lastPlayed();
   startLevel(last !== null && last >= 1 && last <= levels.length ? last - 1 : 0);
-  open('title');
+  playSplash(() => open('title')); // the candle lighting, then the title over it
 }
 requestAnimationFrame(watchPlay);
 

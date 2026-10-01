@@ -1,5 +1,5 @@
-// What the menus and hints say about each level: its name, its chapter, and (for a level that brings
-// in something new) a hint on how to use it, for keyboard and for touch. Indexed by level number - 1,
+// What the menus and hints say about each level: its name, and (for a level that brings in something
+// new) a hint on how to use it, for keyboard and for touch. Titles are indexed by level number - 1,
 // in step with levels.ts.
 
 export const LEVEL_TITLES = [
@@ -11,17 +11,6 @@ export const LEVEL_TITLES = [
   'Two Doors, One Beam', 'Order Matters', 'Both at Once',
   'Levers', 'The Wheel', 'One Lever, Two Jobs',
 ];
-
-// Chapters, by their first and last level (numbered from 1).
-export const CHAPTERS = [
-  { name: 'The Dark', first: 1, last: 3 },
-  { name: 'Doors', first: 4, last: 7 },
-  { name: 'The Flashlight', first: 8, last: 11 },
-  { name: 'Two Lights', first: 12, last: 15 },
-  { name: 'Mirrors', first: 16, last: 23 },
-  { name: 'Levers', first: 24, last: 26 },
-];
-export const chapterOf = (levelNumber: number) => CHAPTERS.find(c => levelNumber >= c.first && levelNumber <= c.last);
 
 type Hint = { keys: string; touch: string };
 export const LEVEL_HINTS: Record<number, Hint> = {

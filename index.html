@@ -19,7 +19,7 @@
         --gold-dim: #b8913a;
         --text: #e8e0d0;
         --muted: #9a8f80;
-        --panel: rgba(14, 11, 9, 0.82);
+        --panel: rgba(14, 11, 9, 0.95);
         --line: rgba(245, 197, 66, 0.25);
         --display: 'Cinzel', 'Times New Roman', serif;
         --body: 'EB Garamond', Georgia, serif;
@@ -71,7 +71,6 @@
       .byline { color: var(--muted); margin: 28px 0 0; font-size: 16px; }
       .muted { color: var(--muted); margin: 0 0 16px; }
       h2 { font: 500 30px var(--display); letter-spacing: 0.06em; color: var(--gold); margin: 0 0 10px; }
-      .chapter { font: 500 15px var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-dim); margin: 18px 0 8px; text-align: left; }
       .menu-list { display: flex; flex-direction: column; align-items: center; gap: 10px; }
       .menu-row { display: flex; justify-content: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
       .menu-item {
@@ -86,8 +85,39 @@
       .menu-back { min-width: 140px; margin-top: 18px; }
       .menu-row .menu-back { margin-top: 0; }
 
-      .level-scroll { text-align: left; }
-      .level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+      /* In the menus' option lists (the pause menu, the ending), not the title screen's, and not on Back,
+         Reset progress or the level tiles, a hovered (or keyboard-focused) option gets a flashlight just to its left,
+         shining a 10° beam across it. The flashlight is the game's own art (--flashlight, set in
+         menu.ts): 32 x 18 at (13, 20) in its 64px image, the lens on its right edge, at 1x, 18px clear
+         of the option. The beam leaves the lens as tall as the lens and spreads at 10° (2·tan 5° = 0.175
+         of its length) most of the way across the option, brightest at the lens. */
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item { position: relative; }
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item::before,
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item::after {
+        content: ''; position: absolute; top: 50%; pointer-events: none;
+        opacity: 0; transition: opacity 160ms ease;
+      }
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item::before {
+        left: -50px; width: 32px; height: 18px; margin-top: -9px; z-index: 1; /* over its beam */
+        background: var(--flashlight) -13px -20px / 64px 64px no-repeat; image-rendering: pixelated;
+      }
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item::after {
+        /* From the lens (1px under the flashlight's front), reaching 90% of the way to the option's far
+           end; as tall as the lens (18px), plus how much a 10° cone spreads over that reach: 0.175 of
+           it, 15.75% of the option's width (padding % is of the width). */
+        left: -19px; width: calc((100% + 19px) * 0.9); height: 18px; padding-top: 15.75%; transform: translateY(-50%);
+        clip-path: polygon(0 calc(50% - 9px), 100% 0, 100% 100%, 0 calc(50% + 9px));
+        /* Falls off like the game's lights (LIGHT_FALLOFF_STOPS: full, 90% at 0.4 of its reach, nothing
+           at the end), so it fades out at its tip rather than stopping. */
+        background: radial-gradient(ellipse 100% 100% at 0 50%,
+          rgba(255, 240, 190, 0.48), rgba(255, 225, 160, 0.432) 40%, rgba(255, 205, 130, 0) 100%);
+        mix-blend-mode: screen;
+      }
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::before,
+      .menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::after { opacity: 1; }
+
+      .level-grid {
+        text-align: left; margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
       .level-tile {
         position: relative; min-width: 0; padding: 8px 10px 10px; text-align: left;
         display: flex; flex-direction: column; gap: 2px; line-height: 1.2;
@@ -111,6 +141,26 @@
       .links a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--line); }
       .links a:hover { border-color: var(--gold); }
 
+      /* The candle behind the title (splash.ts): over the game, under the menus. */
+      .splash {
+        position: fixed; inset: 0; z-index: 9; overflow: hidden; background: #000;
+        opacity: 0; pointer-events: none; transition: opacity 700ms ease;
+      }
+      .splash.shown { opacity: 1; pointer-events: auto; }
+      .splash-rig { position: absolute; left: 0; top: 0; will-change: transform; }
+      .splash-glow {
+        position: absolute; border-radius: 50%; pointer-events: none; opacity: 0;
+        background: radial-gradient(circle,
+          rgba(255, 222, 150, 0.6) 0%, rgba(255, 180, 80, 0.36) 6%, rgba(240, 130, 45, 0.18) 18%,
+          rgba(160, 70, 20, 0.08) 34%, rgba(60, 25, 8, 0.03) 50%, rgba(0, 0, 0, 0) 62%);
+      }
+      .splash-candle { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; user-select: none; -webkit-user-drag: none; }
+      /* The title floats over the candle's light, up top, clear of the candle. */
+      .menu-overlay[data-screen="title"] { background: transparent; }
+      .menu-overlay[data-screen="title"] .menu-panel { margin-bottom: 12vh; } /* centred, a little high: clear of the candle */
+      /* Dark, so the candle's light behind it doesn't wash it out. */
+      .menu-overlay[data-screen="title"] .byline { color: whitesmoke; font-weight: 500; }
+
       /* During play. */
       .menu-button {
         position: fixed; z-index: 5; display: none;
@@ -133,7 +183,7 @@
       }
       .hint.touch { bottom: calc(env(safe-area-inset-bottom) + 96px); } /* above the aim buttons */
       .level-card { top: calc(env(safe-area-inset-top) + 18px); display: flex; flex-direction: column; gap: 2px; max-width: calc(100vw - 140px); }
-      .card-chapter { font: 500 13px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-dim); }
+      .card-number { font: 500 13px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-dim); }
       .card-title { font: 500 26px var(--display); letter-spacing: 0.05em; color: var(--gold); text-shadow: 0 0 14px rgba(0, 0, 0, 0.9); }
       .hint.shown, .level-card.shown { opacity: 1; }
     </style>
