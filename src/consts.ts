@@ -22,8 +22,21 @@ export const OBJECT_SPRITES = {
   mirror: { file: 'mirror.png', anchor: { x: 33.5, y: 31.5 } },
   flashlight: { file: 'droppedFlashlight.png', anchor: { x: 32, y: 29.5 } },
   candle: { file: 'droppedCandle.png', anchor: { x: 31.5, y: 31.5 } },
-  // Stairs fill their cell: up them at the start, and (mirrored) the other end of them at the exit.
+  // Stairs fill their cell: the way in at the start, and the way on at the exit.
   stairs: { file: 'Stairs.png', anchor: { x: 32, y: 32 } },
+  stairsExit: { file: 'StairsExit.png', anchor: { x: 32, y: 32 } },
+  // Plates fill their cell: dead while dark, waking to their door's kind of mid while lit.
+  plateDead: { file: 'plateDead.png', anchor: { x: 32, y: 32 } },
+  // A lever on, off, and mid-flick between. A lever that turns mirrors is a wheel instead, turning
+  // with them, about its hub.
+  lever: { file: 'lever.png', anchor: { x: 32, y: 30 } },
+  leverOff: { file: 'leverOff.png', anchor: { x: 32, y: 30 } },
+  leverMid: { file: 'leverMid.png', anchor: { x: 32, y: 30 } },
+  wheel: { file: 'wheel.png', anchor: { x: 32.5, y: 28.5 } },
+  // A door's leaf (every kind): upright, the hinge at the top, the leaf's centre line on the anchor's column.
+  door: { file: 'door.png', anchor: { x: 31, y: 0 } },
+  plateMidStd: { file: 'plateMidStd.png', anchor: { x: 32, y: 32 } },
+  plateMidLock: { file: 'plateMidLock.png', anchor: { x: 32, y: 32 } },
 };
 // Standing still, the player sprite idles: 'breathe' swells and shrinks it slightly (reads as
 // breathing, seen from above), 'bob' moves it up and down the screen. Only the drawing moves.
@@ -37,6 +50,7 @@ export const IDLE_FADE_MS = 300;             // how long it takes to settle into
 // pops up by PUNCH_SCALE and settles back over PUNCH_MS. Only the drawing.
 export const PUNCH_SCALE = 0.07;
 export const PUNCH_MS = 180;
+export const LEVER_FLICK_MS = 100; // a pulled lever shows mid-flick this long before it lands the other way
 // Stopped dead walking into the dark (or anything else you can't slide along axis by axis), you
 // slide off to whichever side is clear, trying turns of SLIDE_STEP_DEG up to SLIDE_MAX_DEG from the
 // way you're pushing. Nearer 90 slides along edges you meet almost square on, but more slowly.
@@ -68,6 +82,13 @@ export const FLASHLIGHT_SPILL_RANGE = 0.7; // of FLASHLIGHT_RANGE
 // Light off a mirror fades the same way as the beam toward the edges of what the mirror catches: full
 // across the middle MIRROR_EDGE_CORE of it (as seen from the reflection's virtual source).
 export const MIRROR_EDGE_CORE = FLASHLIGHT_CORE;
+// Soft shadows (only drawn): past a corner, a shadow's edge fades over the angle a light this size
+// makes from the corner (at most SHADOW_SOFT_MAX), drawn as SHADOW_SOFT_STEPS slices. Bigger is softer.
+// Only a jump of SHADOW_EDGE_MIN_JUMP or more between neighbouring rays counts as a shadow's edge.
+export const SHADOW_SOFT_SIZE = 0.4 * GRID_SIZE;
+export const SHADOW_SOFT_MAX = 20 * Math.PI / 180;
+export const SHADOW_SOFT_STEPS = 8;
+export const SHADOW_EDGE_MIN_JUMP = 0.2 * GRID_SIZE;
 // While walking, the flashlight swings round to face where you're going at this rate.
 export const FACING_TURN_DEG_PER_S = 1080;
 // You only start walking once facing within this of the way you want to go. Not 0, so easing from
@@ -126,8 +147,26 @@ export const STICK_SNAP_DEG = 12;
 // Shared by the renderer and game logic, so "lit" in gameplay matches what's drawn.
 export const LIGHT_FALLOFF_STOPS: [number, number][] = [[0, 1], [0.4, 0.9], [1, 0]];
 export const LIT_THRESHOLD = 0.15;
+// How the lit floor is drawn (only drawn: gameplay uses the light itself). At full light it shows at
+// LIT_FLOOR_STRENGTH of its art, warmed by multiplying by LIT_FLOOR_TINT (multiplying keeps the art's
+// contrast; adding a colour, as before, lifted the darks and washed it out). Walls and doors aren't tinted.
+export const LIT_FLOOR_STRENGTH = 0.8;
+export const LIT_FLOOR_TINT = 'rgb(255, 228, 190)';
 export const DOOR_OPEN_MS = 1000;
-export const DOOR_THICKNESS = 0.1 * GRID_SIZE; // a door leaf, as drawn and for bumping into
+// A locked door creaks ajar while its plate is lit (this share of its full swing, over
+// DOOR_CREAK_MS), and slams shut again (over DOOR_SLAM_MS) if the plate goes dark before it's opened.
+export const DOOR_CREAK = 0.2;
+export const DOOR_CREAK_MS = 700;
+export const DOOR_SLAM_MS = 120;
+// A plate lit fades from dead to mid over this long.
+export const PLATE_MID_MS = 750;
+// Going dark it winks out: shifts to dead (still shining), flares, then fades into the dark.
+export const PLATE_WINK_SHIFT_MS = 720;
+export const PLATE_WINK_FLARE_MS = 550;
+export const PLATE_WINK_FADE_MS = 450;
+export const PLATE_WINK_FLARE = 0.6; // how bright the flare peaks (the dead art added on again at this much)
+export const DOOR_THICKNESS = 4; // a door leaf, for bumping into
+export const DOOR_ART_WIDTH = 6; // a door leaf, as drawn and lit: door.png's width
 
 export const WALL_LIGHT_PENETRATION = 0.08 * GRID_SIZE; // purely visual: how far light shows into a wall face
 

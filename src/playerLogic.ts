@@ -165,8 +165,9 @@ export const updateMirrors = (dt: number) => {
     const d = Math.min(m.turnLeft, Math.max(m.turnSpeed * dt, 1e-4));
     m.turnLeft -= d;
     m.shownStep = (m.shownStep + d) % MIRROR_STEPS;
+    m.turned += d;
     const done = m.turnLeft <= 1e-4;
-    if (done) { m.shownStep = m.step; m.turnLeft = m.turnSpeed = 0; }
+    if (done) { m.shownStep = m.step; m.turned = Math.round(m.turned); m.turnLeft = m.turnSpeed = 0; }
     if (m.everSeen) m.seenStep = m.shownStep; // a mirror you know about, you see turn, whatever turned it
   }
 }
@@ -266,9 +267,13 @@ const moveAxis = (axis: 'x' | 'y', delta: number, groups: LightGroup[], assist: 
       if (i === 4) return;
     }
   }
-  if (tooDark(next, groups)) return;
+  if (tooDark(next, groups)) { fear.stoppedAt = performance.now(); return; }
   player[axis] = next[axis];
 }
+
+// When the dark last stopped you walking (performance.now() clock), so a stranded player can be
+// told how to restart (see main.ts).
+export const fear = { stoppedAt: -Infinity };
 
 // Stopped dead walking at `angle` (by the dark, a mirror's pivot, a slanted door leaf; anything the
 // axis-by-axis move can't slide along): try heading off a little to either side, turning further

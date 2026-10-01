@@ -5,7 +5,7 @@ import { stick, input, lightState, gameState, camera, keysDown } from "./state";
 // without moving more than TAP_SLOP it's a tap (onTap), but dragged further it becomes the stick,
 // centred where it went down, so the stick can be anywhere and never hides the level. Several
 // fingers at once: one can hold the stick while another taps; two put down together pinch to zoom
-// and drag the view (camera.pan). Once touch is used, on-screen buttons
+// and drag the view (camera.pan), as a right or middle mouse drag does. Once touch is used, on-screen buttons
 // appear for what's otherwise on keys (swap lights, restart, and Q/E to aim the flashlight).
 
 type Handlers = {
@@ -84,8 +84,20 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     base.style.display = 'none';
   }
 
+  // A right or middle mouse drag moves the view, as two fingers do.
+  let mousePan: { x: number; y: number } | null = null;
+  const endMousePan = () => { mousePan = null; camera.pinching = false; }
+
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'touch') showButtons();
+    if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2) && !gesture) {
+      e.preventDefault(); // no middle-click autoscroll
+      canvas.setPointerCapture(e.pointerId);
+      mousePan = { x: e.clientX, y: e.clientY };
+      camera.pinching = true; // held where it's dragged to, and stopped at the level's edges
+      camera.intro = false;
+      return;
+    }
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     canvas.setPointerCapture(e.pointerId); // keep getting its moves even off the canvas
     presses.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -98,6 +110,13 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     }
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (mousePan && e.pointerType === 'mouse') {
+      const pr = window.devicePixelRatio || 1;
+      camera.panX -= (e.clientX - mousePan.x) * pr / camera.zoom;
+      camera.panY -= (e.clientY - mousePan.y) * pr / camera.zoom;
+      mousePan = { x: e.clientX, y: e.clientY };
+      return;
+    }
     if (e.pointerId === stickId) return moveStick(e.clientX, e.clientY);
     if (gesture?.fingers.has(e.pointerId)) return moveGesture(e.pointerId, e.clientX, e.clientY);
     const start = presses.get(e.pointerId);
@@ -109,6 +128,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     moveStick(e.clientX, e.clientY);
   });
   const end = (e: PointerEvent, cancelled: boolean) => {
+    if (mousePan && e.pointerType === 'mouse') return endMousePan();
     if (e.pointerId === stickId) return releaseStick();
     if (gesture?.fingers.has(e.pointerId)) return endGesture(); // the other finger then does nothing till lifted
     const start = presses.get(e.pointerId);
@@ -117,7 +137,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
   }
   canvas.addEventListener('pointerup', (e) => end(e, false));
   canvas.addEventListener('pointercancel', (e) => end(e, true));
-  window.addEventListener('blur', () => { releaseStick(); presses.clear(); if (gesture) endGesture(); });
+  window.addEventListener('blur', () => { releaseStick(); presses.clear(); if (gesture) endGesture(); if (mousePan) endMousePan(); });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault()); // long-press menu
 
   // Buttons, top right, clear of notches. Swap only shows while you've a light in your pocket.

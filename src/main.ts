@@ -1,11 +1,14 @@
 import { FOG_MEMORY_SCALE, GRID_SIZE, CAMERA_MAX_ZOOM, LEVEL_FADE_IN_MS, LEVEL_FADE_OUT_MS, RESTART_FADE_MS, START_VIEW_CELLS, START_OVERVIEW_MS, START_ZOOM_MS } from "./consts";
 import { initTouchControls } from "./touchControls";
 import { screenDark, cardShown } from "./transition";
-import { keysDown, gameState, loadLevel, camera } from "./state";
+import { keysDown, gameState, loadLevel, camera, stick, player } from "./state";
 import { levels, fromMap } from "./levels";
 import type { Level } from "./interfaces";
 import { draw, loadAssets, setViewMode, nextViewMode, snapZoom, screenToWorld } from "./renderer";
-import { act, swapHeldLight, tapAt } from "./playerLogic";
+import { act, swapHeldLight, tapAt, fear } from "./playerLogic";
+import { initMenu, open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from "./menu";
+import { LEVEL_HINTS } from "./levelInfo";
+import { markCompleted, markPlayed, lastPlayed } from "./progress";
 
 // The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -74,27 +77,37 @@ if (playtest) setViewMode(params.get('view') === 'bright' ? 'bright' : 'fog');
 
 // Arriving at a level: it fades in from black (over `fadeInMs`) as its lights warm up. A new level
 // (not a restart) is zoomed to fit.
+// Behind the title screen a level plays itself out (nobody's at the controls); once you pick one
+// from the menus, `playing` turns on: levels are saved as played, and get their card and hint.
 let levelIndex = -1;
 let leaving = false; // fading out to another level (or a restart): ignore Enter and R till it's done
-const startLevel = (index: number, fadeInMs = LEVEL_FADE_IN_MS) => {
-  const isNew = index !== levelIndex;
+let playing = false;
+const startLevel = (index: number, fadeInMs = LEVEL_FADE_IN_MS, fresh = index !== levelIndex) => {
   levelIndex = index;
   loadLevel(playLevels[index]);
   setWorldSize(playLevels[index].width * GRID_SIZE, playLevels[index].height * GRID_SIZE);
-  if (isNew) { camera.zoom = fitZoom(); camera.fitted = true; snapZoom(); scheduleIntroZoom(); }
+  if (fresh) { camera.zoom = fitZoom(); camera.fitted = true; snapZoom(); scheduleIntroZoom(); }
   camera.panX = camera.panY = 0;
   leaving = false;
   cardShown.set(0);
   screenDark.set(1);
   screenDark.go(0, fadeInMs);
+  strandHinted = false;
+  if (!playing || playtest) return;
+  markPlayed(index + 1);
+  if (!fresh) return; // a restart: you've seen the card and the hint
+  showLevelCard(index);
+  const hint = LEVEL_HINTS[index + 1];
+  if (hint) setTimeout(() => { if (levelIndex === index && !isMenuOpen()) showHint(hint); }, fadeInMs);
+  else hideHint();
 }
 
 // Leaving a level: fade to black (and the Level Complete card out), then start the next one.
-const leaveTo = (index: number, fadeOutMs: number, fadeInMs?: number) => {
+const leaveTo = (index: number, fadeOutMs: number, fadeInMs?: number, fresh?: boolean) => {
   if (leaving) return;
   leaving = true;
   cardShown.go(0, fadeOutMs);
-  screenDark.go(1, fadeOutMs, () => startLevel(index, fadeInMs));
+  screenDark.go(1, fadeOutMs, () => startLevel(index, fadeInMs, fresh));
 }
 
 // Zoom is screen px per world px. From 1 up it's whole numbers only, so every art pixel is an exact
@@ -142,12 +155,52 @@ const zoomStep = (dir: 1 | -1) => {
   camera.zoom = clampZoom(dir > 0 ? (z < 1 ? Math.min(1, z * ZOOM_OUT_STEP) : z + 1) : (z > 1 ? z - 1 : z / ZOOM_OUT_STEP));
 }
 
-const nextLevel = () => { if (gameState.status === 'won') leaveTo((levelIndex + 1) % playLevels.length, LEVEL_FADE_OUT_MS); };
-const restart = () => leaveTo(levelIndex, RESTART_FADE_MS, RESTART_FADE_MS * 2);
+// On from the Level Complete card: the next level, or after the last, the ending.
+const nextLevel = () => {
+  if (gameState.status !== 'won' || leaving) return;
+  if (levelIndex === playLevels.length - 1 && !playtest) { hideHint(); open('ending'); return; }
+  leaveTo((levelIndex + 1) % playLevels.length, LEVEL_FADE_OUT_MS);
+};
+const restart = () => { if (playing || playtest) leaveTo(levelIndex, RESTART_FADE_MS, RESTART_FADE_MS * 2); };
+
+// A level picked from the menus: always starts afresh (card, hint, the zoom-in), even the one behind.
+const play = (index: number) => {
+  close();
+  hideHint();
+  playing = true;
+  markStarted();
+  leaving = false;
+  leaveTo(index, LEVEL_FADE_OUT_MS, LEVEL_FADE_IN_MS, true);
+}
+
+// Finishing a level saves it, as soon as you reach the exit. And walking into the dark for a while
+// (stopped by the fear rule, going nowhere) gets a hint on how to restart, once per try.
+let wasWon = false, strandedMs = 0, strandHinted = false, lastWatch = 0, lastSpot = { x: 0, y: 0 };
+const STRANDED_HINT_MS = 2000;
+const watchPlay = (now: number) => {
+  const won = gameState.status === 'won';
+  if (won && !wasWon && playing && !playtest) markCompleted(levelIndex + 1);
+  wasWon = won;
+  const stuck = playing && !won && !isMenuOpen() && now - fear.stoppedAt < 150
+    && Math.hypot(player.x - lastSpot.x, player.y - lastSpot.y) < 0.5;
+  strandedMs = stuck ? strandedMs + Math.min(100, now - lastWatch) : 0;
+  if (strandedMs >= STRANDED_HINT_MS && !strandHinted) {
+    strandHinted = true;
+    showHint({ keys: 'Stuck in the dark? Press R to restart the level.', touch: 'Stuck in the dark? Tap ↻ to restart the level.' }, 6000);
+  }
+  lastWatch = now;
+  lastSpot = { x: player.x, y: player.y };
+  requestAnimationFrame(watchPlay);
+}
+
+// Opening a menu lets go of everything held, so you don't walk on behind it.
+const letGo = () => { keysDown.clear(); stick.x = stick.y = 0; };
 
 window.addEventListener('resize', resize);
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
+  if (key === 'escape' && !playtest) { letGo(); onEscape(); return; }
+  if (isMenuOpen()) return; // the menus take keys for their buttons (Tab, Enter, Space)
   keysDown.add(key);
   if (key === ' ') e.preventDefault(); // Space would otherwise scroll the page
   if (key === '=' || key === '+') zoomStep(1);
@@ -164,7 +217,7 @@ window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
 // Taps, clicks and the on-screen stick. On the Level Complete card a tap goes on to the next level;
 // otherwise it's tapAt, on whatever's under it.
 initTouchControls(canvas, {
-  onTap: (x, y) => gameState.status === 'won' ? nextLevel() : tapAt(screenToWorld(x, y)),
+  onTap: (x, y) => isMenuOpen() ? undefined : gameState.status === 'won' ? nextLevel() : tapAt(screenToWorld(x, y)),
   onSwap: swapHeldLight,
   onRestart: restart,
   clampZoom,
@@ -180,12 +233,22 @@ window.addEventListener('wheel', (e) => {
   wheelTotal = 0;
 }, { passive: false });
 
+initMenu({ play, resume: () => {}, restart, levelCount: playLevels.length });
+
 resize();
-// ?level=N starts on level N (numbered from 1); otherwise the level being worked on.
+// ?level=N goes straight into level N (numbered from 1), as does the editor's playtest. Otherwise the
+// title screen, over the last level played (or the first).
 const levelParam = Number(params.get('level'));
-const firstLevel = playtest ? 0
-  : Number.isInteger(levelParam) && levelParam >= 1 && levelParam <= levels.length ? levelParam - 1
-  : 15;
-startLevel(firstLevel);
+const asked = Number.isInteger(levelParam) && levelParam >= 1 && levelParam <= levels.length ? levelParam - 1 : null;
+if (playtest || asked !== null) {
+  playing = true;
+  markStarted();
+  startLevel(playtest ? 0 : asked!);
+} else {
+  const last = lastPlayed();
+  startLevel(last !== null && last >= 1 && last <= levels.length ? last - 1 : 0);
+  open('title');
+}
+requestAnimationFrame(watchPlay);
 
 loadAssets().then(() => requestAnimationFrame(draw));

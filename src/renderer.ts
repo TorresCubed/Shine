@@ -2,16 +2,16 @@ import { polygonsPath, cellCenter, mirrorSegment, easeInOut } from "./util";
 import { tryMove, updateAim, updateMirrors } from "./playerLogic";
 import { getScene } from "./scene";
 import { castLight, castFlashlight, fadeProfile, fadeAt, insideAny, brightnessAt, clearDistance } from "./rayTracer";
-import type { LightGroup } from "./rayTracer";
+import type { LightGroup, Penumbra } from "./rayTracer";
 import type { GridPos, LightKind, Point, Scene, Segment, Wall } from "./interfaces";
 import { updateDoors } from "./doorLogic";
 import { screenDark, cardShown } from "./transition";
 import {
   CANDLE_RADIUS, LAMP_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE, MAX_MIRROR_BOUNCES, GRID_SIZE, TARGET_FPS,
-  CANDLE_RAY_COUNT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, FOG_FLOOR_BRIGHTNESS, FOG_VISIBILITY, MEMORY_FADE_S, MEMORY_FADE_MIN,
-  LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION, LIGHT_FALLOFF_STOPS, PLAYER_SPRITES, FLASHLIGHT_BACK, LIGHT_EDGE_GAP,
-  PLAYER_SPRITE_SCALE, OBJECT_SPRITES, MIRROR_STEPS, DOOR_THICKNESS, FLAME_FLICKER_REACH, FLAME_FLICKER_BRIGHTNESS,
-  IDLE_STYLE, IDLE_BREATHE, IDLE_BOB, IDLE_PERIOD_MS, IDLE_FADE_MS, ZOOM_EASE_MS, PUNCH_SCALE, PUNCH_MS,
+  CANDLE_RAY_COUNT, LIT_FLOOR_STRENGTH, LIT_FLOOR_TINT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, FOG_FLOOR_BRIGHTNESS, FOG_VISIBILITY, MEMORY_FADE_S, MEMORY_FADE_MIN,
+  LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION, LIGHT_FALLOFF_STOPS, PLAYER_SPRITES, FLASHLIGHT_BACK, LIGHT_EDGE_GAP, SHADOW_SOFT_STEPS,
+  PLAYER_SPRITE_SCALE, OBJECT_SPRITES, PLATE_MID_MS, PLATE_WINK_SHIFT_MS, PLATE_WINK_FLARE_MS, PLATE_WINK_FADE_MS, PLATE_WINK_FLARE, MIRROR_STEPS, DOOR_ART_WIDTH, FLAME_FLICKER_REACH, FLAME_FLICKER_BRIGHTNESS,
+  IDLE_STYLE, IDLE_BREATHE, IDLE_BOB, IDLE_PERIOD_MS, IDLE_FADE_MS, ZOOM_EASE_MS, PUNCH_SCALE, PUNCH_MS, LEVER_FLICK_MS,
   DUST_PER_CELL, DUST_SPEED, DUST_SIZE, DUST_BRIGHTNESS, DUST_TWINKLE_MS, WIN_DIM, WIN_FADE_MS, CARD_FADE_MS,
   CAMERA_PAN_RETURN,
 } from "./consts";
@@ -42,7 +42,7 @@ let fps = 0;
 // from here (reading pixels back to force it makes Chrome move the canvas off the GPU, which is far
 // slower), so ?skip=a,b turns parts of the drawing off instead: compare fps with each off. Parts:
 // fog (the remembered layer), memory (writing it), lit (lit regions), floor (a lit region's floor,
-// marks and tint), faces (lit wall and door faces), sight (cutting light to line of sight), objects
+// marks and tint), faces (lit wall and door faces), soft (soft shadow edges), sight (cutting light to line of sight), objects
 // (lights on the floor, the player, shines), screen (the world onto the screen).
 const params = new URLSearchParams(location.search);
 const perfParam = params.get('perf');
@@ -203,33 +203,18 @@ const ensureWallArt = () => {
   d.drawImage(wallArt, 0, 0);
 }
 
-// Doors in fog: their colours through the same grayscale + FOG_FLOOR_BRIGHTNESS as the dim tiles.
-const DOOR_DIM_COLOR = '#2e2e2e';
-
-// A door leaf as a filled quad, DOOR_THICKNESS wide, wound the same way as rect() so leaves and wall
-// rects can share one clip path.
+// A door leaf as a filled quad, DOOR_ART_WIDTH wide (for a locked door's flash).
 const leafPath = (c: CanvasRenderingContext2D, s: Segment) => {
   const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1;
-  const nx = -(s.y2 - s.y1) / len * DOOR_THICKNESS / 2, ny = (s.x2 - s.x1) / len * DOOR_THICKNESS / 2;
+  const nx = -(s.y2 - s.y1) / len * DOOR_ART_WIDTH / 2, ny = (s.x2 - s.x1) / len * DOOR_ART_WIDTH / 2;
   const q = [{ x: s.x1 + nx, y: s.y1 + ny }, { x: s.x2 + nx, y: s.y2 + ny }, { x: s.x2 - nx, y: s.y2 - ny }, { x: s.x1 - nx, y: s.y1 - ny }];
   if (signedArea(q) < 0) q.reverse();
   c.moveTo(q[0].x, q[0].y);
   for (const p of q) c.lineTo(p.x, p.y);
   c.closePath();
 }
-// Clip paths for the solid things light stops at: the walls, one door, or both.
-const wallsPath = (c: CanvasRenderingContext2D) => { for (const w of levelWalls) c.rect(w.x, w.y, w.w, w.h); };
-const doorPath = (door: DoorState) => (c: CanvasRenderingContext2D) => { for (const s of doorLeaves(door, door.openAmount)) leafPath(c, s); };
-const solidsPath = (c: CanvasRenderingContext2D) => { wallsPath(c); for (const d of doors) doorPath(d)(c); };
 
-// Light doors are wood, lever doors iron; locked doors are red while locked, green once unlocked.
-const doorColor = (door: DoorState) => {
-  if (door.kind === 'light') return '#7a5230';
-  if (door.kind === 'lever') return '#5a6270';
-  return door.triggerOn || door.opened ? '#4f8a3a' : '#8a2e24';
-}
-
-// Stand-in until locked doors have art: when one unlocks (or locks again) it flashes green (or red),
+// When a locked door unlocks (or locks again) it flashes green (or red),
 // glowing up and fading back to how it looked, over LOCK_FLASH_MS. It shows even in fog, where
 // nothing else changes unseen, so you know your light reached its plate; but only once you've seen
 // the door, so it never gives away one you haven't found.
@@ -305,16 +290,19 @@ const punchScale = (key: string) => {
   return 1 + PUNCH_SCALE * (t < rise ? easeInOut(t / rise) : 1 - easeInOut((t - rise) / (1 - rise)));
 }
 
+// A lever pulled within the last LEVER_FLICK_MS is mid-flick (its punch marks when it was pulled).
+const leverFlicking = (l: GridPos) => frameTime - (punches.get(`lever ${l.gridX},${l.gridY}`) ?? -Infinity) < LEVER_FLICK_MS;
+
 // Object art, as drawn and as remembered in fog (grayed and darkened like the floor), turned by
 // `angle` about its anchor. Art is scaled so its canvas is one cell, with smoothing off.
 type ObjectKind = keyof typeof OBJECT_SPRITES;
 const objectArt = {} as Record<ObjectKind, { lit: HTMLImageElement; dim: HTMLCanvasElement }>;
-const drawObject = (c: CanvasRenderingContext2D, kind: ObjectKind, x: number, y: number, angle: number, dim: boolean, scale = 1, mirrored = false) => {
+const drawObject = (c: CanvasRenderingContext2D, kind: ObjectKind, x: number, y: number, angle: number, dim: boolean, scale = 1) => {
   const art = objectArt[kind], k = GRID_SIZE / art.lit.width, { anchor } = OBJECT_SPRITES[kind];
   c.save();
   c.translate(x, y);
   c.rotate(angle);
-  c.scale(k * scale * (mirrored ? -1 : 1), k * scale);
+  c.scale(k * scale, k * scale);
   c.imageSmoothingEnabled = false;
   c.drawImage(dim ? art.dim : art.lit, -anchor.x, -anchor.y);
   c.restore();
@@ -326,10 +314,10 @@ const drawObject = (c: CanvasRenderingContext2D, kind: ObjectKind, x: number, y:
 const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = true) => {
   c.lineWidth = 0.06 * GRID_SIZE;
 
-  // Stairs: the way in at the start, and the other end of them (mirrored) at the exit.
+  // Stairs: the way in at the start, and the way on at the exit.
   const s = cellCenter(start), g = cellCenter(goal);
   drawObject(c, 'stairs', s.x, s.y, 0, dim);
-  drawObject(c, 'stairs', g.x, g.y, 0, dim, 1, true);
+  drawObject(c, 'stairsExit', g.x, g.y, 0, dim);
 
   // Wall lamps: a mounting bar along the wall edge with a half-disc of glass bulging into the room.
   for (const l of lamps) {
@@ -355,39 +343,25 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = t
   // Lights waiting to be found: only as remembered here; lit, they're drawn on top (see draw).
   if (dim) for (const p of lightState.pickups) drawObject(c, 'flashlight', p.x, p.y, p.aimAngle, true);
 
-  // Plates: a dark recessed tile while idle, a cool cyan glow while lit.
+  // Plates: dead, on the floor. Awake, they shine over the darkness (see drawAwakePlates).
   for (const door of doors) {
     if (door.kind === 'lever') continue;
-    const at = cellCenter(door.trigger), half = GRID_SIZE * 0.3, active = !dim && door.triggerOn;
-    c.fillStyle = dim ? '#3a3a3a' : active ? '#8fe3ff' : '#2a2622';
-    c.fillRect(at.x - half, at.y - half, half * 2, half * 2);
-    c.strokeStyle = dim ? '#6a6a6a' : active ? '#e0f8ff' : '#8a8378';
-    c.strokeRect(at.x - half, at.y - half, half * 2, half * 2);
+    const at = cellCenter(door.trigger);
+    drawObject(c, 'plateDead', at.x, at.y, 0, dim);
   }
 
-  // Levers: a round base and a handle thrown left (off) or right (on).
+  // Levers: off or on, flicking through mid as pulled. One that turns mirrors is a wheel, upright to
+  // start and turned as far as the (first) mirror it turns has turned since, so it spins as that
+  // does, pull after pull.
   for (const l of levers) {
-    const at = cellCenter(l), pop = dim ? 1 : punchScale(`lever ${l.gridX},${l.gridY}`);
-    c.save();
-    c.translate(at.x, at.y);
-    c.scale(pop, pop);
-    c.translate(-at.x, -at.y);
-    const angle = l.on ? -Math.PI / 4 : -3 * Math.PI / 4, len = GRID_SIZE * 0.32;
-    const tipX = at.x + Math.cos(angle) * len, tipY = at.y + Math.sin(angle) * len;
-    c.fillStyle = dim ? '#3a3a3a' : '#4a4f58';
-    c.beginPath();
-    c.arc(at.x, at.y, GRID_SIZE * 0.16, 0, Math.PI * 2);
-    c.fill();
-    c.strokeStyle = dim ? '#6a6a6a' : '#c9ced6';
-    c.beginPath();
-    c.moveTo(at.x, at.y);
-    c.lineTo(tipX, tipY);
-    c.stroke();
-    c.fillStyle = dim ? '#7a7a7a' : '#d9534f';
-    c.beginPath();
-    c.arc(tipX, tipY, 0.08 * GRID_SIZE, 0, Math.PI * 2);
-    c.fill();
-    c.restore();
+    // (No pop when pulled: the flick, or the wheel turning, shows it.)
+    const at = cellCenter(l), turns = mirrors.find(m => m.control === l.id);
+    if (turns) {
+      drawObject(c, 'wheel', at.x, at.y, turns.turned * Math.PI / MIRROR_STEPS, dim); // upright to start
+      continue;
+    }
+    const flicking = !dim && leverFlicking(l);
+    drawObject(c, flicking ? 'leverMid' : l.on ? 'lever' : 'leverOff', at.x, at.y, 0, dim);
   }
 
   // Mirrors. Nothing shows which ones turn, or what turns them: you find out by trying.
@@ -399,30 +373,13 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = t
   // Doors: each leaf where it is (as last seen, in fog).
   if (withDoors) drawDoors(c, dim);
 }
+// Every door's art, turned to lie along each leaf from its hinge.
 const drawDoors = (c: CanvasRenderingContext2D, dim: boolean) => {
   for (const door of doors) {
-    c.fillStyle = dim ? DOOR_DIM_COLOR : doorColor(door);
-    c.beginPath();
-    for (const s of doorLeaves(door, dim ? door.seenOpenAmount : door.openAmount)) leafPath(c, s);
-    c.fill();
+    for (const s of doorLeaves(door, dim ? door.seenOpenAmount : door.openAmount)) {
+      drawObject(c, 'door', s.x1, s.y1, Math.atan2(s.y2 - s.y1, s.x2 - s.x1) - Math.PI / 2, dim);
+    }
   }
-}
-
-// Light polygons end exactly on the wall (and door) faces they hit. Stroking their outline, clipped
-// to the solids `clip` outlines, paints a band WALL_LIGHT_PENETRATION px deep into just the faces the
-// light reaches. Round joins: a flashlight wedge's sharp tip would otherwise get a miter spike
-// reaching ~5x the band width behind it, into the wall at your back.
-const strokeWallFaces = (c: CanvasRenderingContext2D, polygons: Point[][], style: string | CanvasGradient, clip: (c: CanvasRenderingContext2D) => void) => {
-  c.save();
-  c.beginPath();
-  clip(c);
-  c.clip();
-  c.strokeStyle = style;
-  c.lineJoin = 'round';
-  c.lineWidth = WALL_LIGHT_PENETRATION * 2;
-  polygonsPath(c, polygons);
-  c.stroke();
-  c.restore();
 }
 
 // Lit wall faces, shaded by how squarely the light hits them (a face lit head-on is brighter than one
@@ -442,25 +399,29 @@ const WALL_GLOW_FLAME = 0.12;
 // clipping it to the walls was most of a frame's GPU time on a phone). An edge is against a face if
 // its midpoint, nudged a little that way, is in a wall cell or on a door leaf. (Square to the edge,
 // not along the light's direction: a wall lit at a grazing angle would be missed that way.) The
-// quads are sorted by what they're against ('wall', or the door) and into FACE_BANDS by how brightly
-// they light it.
+// quads are sorted into FACE_BANDS by how brightly they light it.
+// A door leaf is too thin for a band (and traced as its centre line, so light stops halfway through
+// it): a leaf the light touches anywhere is lit whole, as brightly as the light hits it most squarely.
 type FaceBands = Point[][][]; // [band][quad] = its 4 corners
-type FaceTarget = 'wall' | DoorState;
+type Leaf = { door: DoorState; s: Segment };
 const FACE_PROBE = 2; // px
-const faceTarget = (x: number, y: number, leaves: { door: DoorState; s: Segment }[]): FaceTarget | null => {
+const faceTarget = (x: number, y: number, leaves: Leaf[]): 'wall' | Leaf | null => {
+  // Doors first: an open leaf lies flat along its cell's side, often against a wall face, and is
+  // still the door there.
+  for (const leaf of leaves) {
+    const { s } = leaf, ex = s.x2 - s.x1, ey = s.y2 - s.y1;
+    const t = Math.max(0, Math.min(1, ((x - s.x1) * ex + (y - s.y1) * ey) / (ex * ex + ey * ey || 1)));
+    if (Math.hypot(x - (s.x1 + ex * t), y - (s.y1 + ey * t)) <= DOOR_ART_WIDTH / 2) return leaf;
+  }
   const gx = Math.floor(x / GRID_SIZE), gy = Math.floor(y / GRID_SIZE);
   const cols = worldCanvas.width / GRID_SIZE, rows = worldCanvas.height / GRID_SIZE;
   if (gx < 0 || gy < 0 || gx >= cols || gy >= rows || wallCells[gy * cols + gx]) return 'wall';
-  for (const { door, s } of leaves) {
-    const ex = s.x2 - s.x1, ey = s.y2 - s.y1;
-    const t = Math.max(0, Math.min(1, ((x - s.x1) * ex + (y - s.y1) * ey) / (ex * ex + ey * ey || 1)));
-    if (Math.hypot(x - (s.x1 + ex * t), y - (s.y1 + ey * t)) <= DOOR_THICKNESS) return door;
-  }
   return null;
 }
-const litFaces = (group: LightGroup) => {
-  const faces = new Map<FaceTarget, FaceBands>();
-  const leaves = doors.flatMap(door => doorLeaves(door, door.openAmount).map(s => ({ door, s })));
+const litFaces = (group: LightGroup): FaceBands => {
+  const bands: FaceBands = Array.from({ length: FACE_BANDS }, () => []);
+  const leaves: Leaf[] = doors.flatMap(door => doorLeaves(door, door.openAmount).map(s => ({ door, s })));
+  const litLeaves = new Map<Leaf, number>(); // each leaf the light touches, and its brightest band
   const o = group.origin;
   for (const poly of group.polys) {
     for (let i = 0; i < poly.length; i++) {
@@ -477,16 +438,38 @@ const litFaces = (group: LightGroup) => {
       if (!target) continue;
       const cos = Math.abs(mx * -ey + my * ex) / (len * md); // incidence vs. the face
       const beam = fadeAt({ x: o.x + mx, y: o.y + my }, group);
-      let bands = faces.get(target);
-      if (!bands) faces.set(target, bands = Array.from({ length: FACE_BANDS }, () => []));
-      // A door leaf is thin: its band stops short of going out the other side.
-      const depth = target === 'wall' ? WALL_LIGHT_PENETRATION : Math.min(WALL_LIGHT_PENETRATION, DOOR_THICKNESS * 0.8);
       // sqrt softens the fall-off toward grazing angles, so a wall lit along its length doesn't
       // drop to a dark line.
-      bands[Math.min(FACE_BANDS - 1, Math.floor(Math.sqrt(cos) * beam * FACE_BANDS))].push([a, b, { x: b.x + nx * depth, y: b.y + ny * depth }, { x: a.x + nx * depth, y: a.y + ny * depth }]);
+      const band = Math.min(FACE_BANDS - 1, Math.floor(Math.sqrt(cos) * beam * FACE_BANDS));
+      if (target !== 'wall') { litLeaves.set(target, Math.max(band, litLeaves.get(target) ?? 0)); continue; }
+      const d = WALL_LIGHT_PENETRATION;
+      bands[band].push([a, b, { x: b.x + nx * d, y: b.y + ny * d }, { x: a.x + nx * d, y: a.y + ny * d }]);
     }
   }
-  return faces;
+  for (const [{ s }, band] of litLeaves) {
+    const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1, h = DOOR_ART_WIDTH / 2;
+    const nx = -(s.y2 - s.y1) / len * h, ny = (s.x2 - s.x1) / len * h;
+    bands[band].push([{ x: s.x1 + nx, y: s.y1 + ny }, { x: s.x2 + nx, y: s.y2 + ny }, { x: s.x2 - nx, y: s.y2 - ny }, { x: s.x1 - nx, y: s.y1 - ny }]);
+  }
+  return bands;
+}
+// A light's lit faces, worked out once a frame (the light map and fog memory both use them). Each
+// frame's lights are new objects, so last frame's drop out on their own.
+const facesCache = new WeakMap<LightGroup, FaceBands>();
+const facesOf = (group: LightGroup) => {
+  let bands = facesCache.get(group);
+  if (!bands) facesCache.set(group, bands = litFaces(group));
+  return bands;
+}
+// All wound the same way, so where quads overlap (at a corner, a door against a wall) they don't
+// cancel into a hole under the nonzero rule.
+const quadsPath = (c: CanvasRenderingContext2D, quads: Point[][]) => {
+  for (const q of quads) {
+    const order = signedArea(q) < 0 ? [3, 2, 1, 0] : [0, 1, 2, 3];
+    c.moveTo(q[order[0]].x, q[order[0]].y);
+    for (let k = 1; k < 4; k++) c.lineTo(q[order[k]].x, q[order[k]].y);
+    c.closePath();
+  }
 }
 // Each band's quads, with the light's falloff (`paint`), at `strength(v)` for the band's brightness v:
 // into the light map at full strength head-on, darker toward grazing; into the glow map by how much
@@ -495,9 +478,9 @@ const drawFaceLight = (c: CanvasRenderingContext2D, bands: FaceBands, paint: Can
   bands.forEach((quads, band) => {
     if (quads.length === 0) return;
     const v = (band + 0.5) / FACE_BANDS, a = strength(v);
-    if (a <= 0) return;
+    if (a < 0.01) return; // too faint to see (a flame's glow on its dimmest faces)
     c.beginPath();
-    for (const q of quads) { c.moveTo(q[0].x, q[0].y); for (let k = 1; k < 4; k++) c.lineTo(q[k].x, q[k].y); c.closePath(); }
+    quadsPath(c, quads);
     c.fillStyle = paint;
     c.globalAlpha = a;
     c.fill();
@@ -594,7 +577,7 @@ const ensureDimFloor = () => {
   ensureWallArt();
   const key = JSON.stringify([
     worldCanvas.width, worldCanvas.height, start, goal, levelWalls, doors.map(d => d.seenOpenAmount), lamps,
-    lightState.pickups, mirrors.map(m => m.seenStep), levers.map(l => l.on),
+    lightState.pickups, mirrors.map(m => [m.seenStep, Math.round(m.turned)]), levers.map(l => l.on),
   ]);
   if (key === dimFloorKey) return;
   dimFloorKey = key;
@@ -638,7 +621,11 @@ const rememberLight = (groups: LightGroup[], view: Point[][]) => {
       c.fillStyle = gradient;
       polygonsPath(c, g.polys);
       c.fill();
-      strokeWallFaces(c, g.polys, gradient, solidsPath);
+      // Its lit wall and door faces (a fill of their own: a quad wound against the light's outline
+      // would cancel it out where they overlap).
+      c.beginPath();
+      for (const quads of facesOf(g)) quadsPath(c, quads);
+      c.fill();
     }
     c.restore();
   }
@@ -666,13 +653,15 @@ const fadeMemory = (dt: number) => {
 // you've seen does something (a door swings, locks or unlocks; a mirror turns; a lever is pulled),
 // the memory under all of it is set back to full, so it shows complete and starts fading afresh.
 // Plates count as seen when their centre is lit and in sight, levers too (or when pulled).
-const rememberWhole = (shape: (c: CanvasRenderingContext2D) => void) => {
+// `level` (0-1) is how well: full unless given.
+const rememberWhole = (shape: (c: CanvasRenderingContext2D) => void, level = 1) => {
+  const v = Math.round(255 * level);
   for (const c of [exploredCtx, recentCtx]) {
-    const inverted = c === recentCtx;
+    const inverted = c === recentCtx, shade = inverted ? 255 - v : v;
     c.save();
     c.setTransform(FOG_MEMORY_SCALE, 0, 0, FOG_MEMORY_SCALE, 0, 0);
     c.globalCompositeOperation = inverted ? 'darken' : 'lighten';
-    c.fillStyle = c.strokeStyle = inverted ? '#000' : '#fff';
+    c.fillStyle = c.strokeStyle = `rgb(${shade},${shade},${shade})`;
     shape(c);
     c.restore();
   }
@@ -688,19 +677,45 @@ const rememberObjects = (groups: LightGroup[], view: Point[][]) => {
   for (const door of doors) {
     if (door.kind !== 'lever' && seen(door.trigger)) rememberWhole(cellShape(door.trigger));
     if (!door.showWhole) continue;
+    const level = doorMemoryLevel(door, groups);
     rememberWhole(c => {
-      c.lineWidth = DOOR_THICKNESS + 8; // a little over, as the low-res memory's edges are soft
+      c.lineWidth = DOOR_ART_WIDTH + 8; // a little over, as the low-res memory's edges are soft
       c.beginPath();
       for (const s of doorLeaves(door, door.seenOpenAmount)) { c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); }
       c.stroke();
-    });
+    }, level);
   }
+}
+// A door is remembered whole, but only as well as the floor beside it: the memory falloff
+// (FOG_MEMORY_STOPS) of the brightest light just off either face of its leaves. Out of light (a door
+// you've seen swinging in the dark), as well as when you last saw it. (Remembered at full, a dimly
+// lit door's fog copy showed through its light far brighter than the dim floor and walls around it.)
+const doorMemory = new WeakMap<DoorState, number>();
+const doorMemoryLevel = (door: DoorState, groups: LightGroup[]) => {
+  let best = -1;
+  for (const s of doorLeaves(door, door.openAmount)) {
+    const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1, off = DOOR_ART_WIDTH / 2 + 2;
+    const nx = -(s.y2 - s.y1) / len * off, ny = (s.x2 - s.x1) / len * off;
+    for (const f of [0.1, 0.5, 0.9]) for (const side of [1, -1]) {
+      const p = { x: s.x1 + (s.x2 - s.x1) * f + nx * side, y: s.y1 + (s.y2 - s.y1) * f + ny * side };
+      for (const g of groups) {
+        const dist = Math.hypot(p.x - g.origin.x, p.y - g.origin.y);
+        if (dist >= g.radius || !insideAny(p, g.polys)) continue; // (out of reach first: it's cheap)
+        const t = dist / g.radius;
+        best = Math.max(best, (1 - t ** FOG_FALLOFF_SHOULDER) ** 2);
+      }
+    }
+  }
+  if (best >= 0) doorMemory.set(door, best);
+  return doorMemory.get(door) ?? 1;
 }
 
 // What fog shows of each spot: MEMORY_FADE_MIN of how well it was ever seen, and the rest of how
 // recently, so remembered things fade after you leave but never all the way.
 const memoryMask = document.createElement('canvas');
 const memoryMaskCtx = memoryMask.getContext('2d')!;
+const MEMORY_EVERY = 2; // frames between fog memory writes (see draw)
+let memoryFrames = 0, memoryMaskStale = true;
 const buildMemoryMask = () => {
   // (Resized only when the level changes: resizing a canvas reallocates it.)
   if (memoryMask.width !== exploredCanvas.width || memoryMask.height !== exploredCanvas.height) {
@@ -737,10 +752,14 @@ const signedArea = (poly: Point[]) =>
 // WALL_LIGHT_PENETRATION further along their sight line to keep the lit face band. Every polygon is
 // wound the same way: a mirror flips winding, and the view is filled/clipped as one path with the
 // nonzero rule, where oppositely wound overlaps would cancel into holes.
+// It also sets viewFaces: the wall and door faces in sight, as bands into them (see litFaces).
+let viewFaces: Point[][] = [];
 const computeView = (scene: Scene): Point[][] => {
   const origin = { x: player.x, y: player.y };
   const range = Math.hypot(worldCanvas.width, worldCanvas.height) * (MAX_MIRROR_BOUNCES + 1);
-  return castLight(origin, 0, Math.PI * 2, CANDLE_RAY_COUNT, range, scene, MAX_MIRROR_BOUNCES).groups.flatMap(g =>
+  const { groups } = castLight(origin, 0, Math.PI * 2, CANDLE_RAY_COUNT, range, scene, MAX_MIRROR_BOUNCES);
+  viewFaces = groups.flatMap(g => litFaces(g).flat());
+  return groups.flatMap(g =>
     g.polys.map(poly => {
       const pushed = poly.map((p, i) => {
         if (g.depth === 0 && i === 0) return p; // the direct fan's shared corner, at the player
@@ -765,7 +784,9 @@ const drawViewMask = (view: Point[][], b: Bounds) => {
   viewMaskCtx.fillStyle = '#fff';
   polygonsPath(viewMaskCtx, view);
   viewMaskCtx.fill();
-  strokeWallFaces(viewMaskCtx, view, '#fff', solidsPath);
+  viewMaskCtx.beginPath();
+  quadsPath(viewMaskCtx, viewFaces);
+  viewMaskCtx.fill();
   return viewMask;
 }
 
@@ -810,7 +831,7 @@ const copyRect = (to: CanvasRenderingContext2D, from: HTMLCanvasElement, b: Boun
 
 
 // The light map: each light adds how strongly it lights each spot ('lighter', into the alpha of
-// litLayer): its polygons at half strength (the lit floor is blended half over the remembered floor
+// litLayer): its polygons at LIT_FLOOR_STRENGTH (the lit floor is blended that much over what's
 // beneath it), its wall and door faces at full, all faded by its radial falloff, plus a flashlight's
 // hotspot on the wall. Then (see draw) the map is cut to the line of sight and the lit art is laid
 // into it ('source-in': art x how lit), once for every light together, rather than each light
@@ -856,6 +877,36 @@ const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds
   s.restore();
   copyRect(target, beamLayer, b);
 }
+// A group's soft shadow edges (see addPenumbras) into the light map, with its falloff (`paint`): each
+// fan's slices fade from the shadow's edge (full) to nothing (smoothstep). Slices at the same step
+// share one fill. A group that fades across (a beam, light off a mirror) dims each fan by the fade
+// where its corner is, rounded to PENUMBRA_FADE_LEVELS so fans still share fills.
+const PENUMBRA_FADE_LEVELS = 4;
+const drawPenumbras = (c: CanvasRenderingContext2D, group: LightGroup, paint: CanvasGradient) => {
+  const fans = group.penumbras;
+  if (!fans) return;
+  const slices = (list: Penumbra[], j: number) => {
+    c.beginPath();
+    for (const { apex, ends } of list) { c.moveTo(apex.x, apex.y); c.lineTo(ends[j].x, ends[j].y); c.lineTo(ends[j + 1].x, ends[j + 1].y); c.closePath(); }
+  };
+  const byFade = new Map<number, Penumbra[]>();
+  for (const f of fans) {
+    const level = group.fades?.length ? Math.round(fadeAt(f.apex, group) * PENUMBRA_FADE_LEVELS) / PENUMBRA_FADE_LEVELS : 1;
+    if (level <= 0) continue;
+    const list = byFade.get(level);
+    if (list) list.push(f); else byFade.set(level, [f]);
+  }
+  c.fillStyle = paint;
+  for (const [across, list] of byFade) {
+    for (let j = 0; j < SHADOW_SOFT_STEPS; j++) {
+      const u = (j + 0.5) / SHADOW_SOFT_STEPS;
+      c.globalAlpha = across * (1 - u * u * (3 - 2 * u));
+      slices(list, j);
+      c.fill();
+    }
+  }
+  c.globalAlpha = 1;
+}
 const drawLightMap = (group: LightGroup, b: Bounds) => {
   const c = litCtx;
   for (const x of [c, glowCtx]) {
@@ -876,18 +927,18 @@ const drawLightMap = (group: LightGroup, b: Bounds) => {
   };
   const strength = group.strength ?? 1;
   if (!group.fades?.length) {
-    c.fillStyle = falloff(0.5 * strength);
+    c.fillStyle = falloff(LIT_FLOOR_STRENGTH * strength);
     polygonsPath(c, group.polys);
     c.fill();
-  } else fillBeam(c, group, b, falloff(0.5 * strength, beamCtx));
+  } else fillBeam(c, group, b, falloff(LIT_FLOOR_STRENGTH * strength, beamCtx));
+  if (!skip.has('soft')) drawPenumbras(c, group, falloff(LIT_FLOOR_STRENGTH * strength));
   if (!skip.has('faces')) {
     const glow = group.spill ? 0 : group.beamAxis !== undefined ? WALL_GLOW_FLASHLIGHT : WALL_GLOW_FLAME;
     const faces = falloff(strength), glowFaces = falloff(1, glowCtx);
-    for (const bands of litFaces(group).values()) {
-      drawFaceLight(c, bands, faces, v => 1 - 0.45 * (1 - v));
-      drawFaceLight(glowCtx, bands, glowFaces, v => glow * v * v);
-      glowDrawn ||= glow > 0;
-    }
+    const bands = facesOf(group);
+    drawFaceLight(c, bands, faces, v => 1 - 0.45 * (1 - v));
+    drawFaceLight(glowCtx, bands, glowFaces, v => glow * v * v);
+    glowDrawn ||= glow > 0;
   }
   if (drawBeamHotspot(c, group)) glowDrawn = true;
   c.restore();
@@ -905,7 +956,7 @@ const ensureLitArt = () => {
   const key = JSON.stringify([
     worldCanvas.width, worldCanvas.height, start, goal, lamps,
     doors.map(d => [d.openAmount, d.triggerOn, d.opened]), mirrors.map(m => m.shownStep),
-    levers.map(l => [l.on, punchScale(`lever ${l.gridX},${l.gridY}`)]),
+    levers.map(l => [l.on, leverFlicking(l)]),
   ]);
   if (key === litArtKey && litArtWalls === levelWalls) return;
   litArtKey = key;
@@ -916,8 +967,9 @@ const ensureLitArt = () => {
   c.fillStyle = c.createPattern(floorTile, 'repeat')!;
   c.fillRect(0, 0, w, h);
   drawFloorMarks(c, false, false);
-  c.globalCompositeOperation = 'lighter';
-  c.fillStyle = `rgba(${CANDLE_GLOW_RGB}, 0.5)`;
+  // Warmed by multiplying (not adding) a warm colour, so the art keeps its contrast and darks.
+  c.globalCompositeOperation = 'multiply';
+  c.fillStyle = LIT_FLOOR_TINT;
   c.fillRect(0, 0, w, h);
   c.globalCompositeOperation = 'source-over';
   c.drawImage(wallArt, 0, 0);
@@ -1044,8 +1096,8 @@ const castAllLights = (scene: Scene, now: number) => {
   for (const s of sources) {
     const radius = Math.max(1, s.radius);
     const result = s.kind === 'flashlight'
-      ? castFlashlight(s.at, s.aim, radius, scene)
-      : castLight(s.at, 0, Math.PI * 2, CANDLE_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES, true);
+      ? castFlashlight(s.at, s.aim, radius, scene, !skip.has('soft'))
+      : castLight(s.at, 0, Math.PI * 2, CANDLE_RAY_COUNT, radius, scene, MAX_MIRROR_BOUNCES, true, !skip.has('soft'));
     if (s.kind !== 'flashlight') for (const g of result.groups) g.flame = s.seed;
     groups.push(...result.groups);
     rayCount += result.rayCount;
@@ -1223,7 +1275,11 @@ export const draw = (now: number) => {
   perfMark('logic');
   fadeMemory(dt);
   perfMark('fade');
-  if (!skip.has('memory')) {
+  // Fog memory is written (and its mask rebuilt) every MEMORY_EVERY frames: fog only changes as
+  // things fade, and what's lit is drawn fresh over it every frame anyway.
+  const memoryFrame = memoryFrames++ % MEMORY_EVERY === 0;
+  if (memoryFrame) memoryMaskStale = true;
+  if (memoryFrame && !skip.has('memory')) {
     rememberLight(groups, view);
     rememberObjects(groups, view);
   }
@@ -1276,7 +1332,9 @@ export const draw = (now: number) => {
       copyRect(worldCtx, fog > 0 ? dimFloorCanvas : dimMarksCanvas, vis);
       worldCtx.globalAlpha = 1;
       worldCtx.globalCompositeOperation = 'multiply';
-      worldCtx.drawImage(buildMemoryMask(), vis.x * S, vis.y * S, vis.w * S, vis.h * S, vis.x, vis.y, vis.w, vis.h);
+      if (memoryMaskStale || memoryMask.width !== exploredCanvas.width || memoryMask.height !== exploredCanvas.height) buildMemoryMask();
+      memoryMaskStale = false;
+      worldCtx.drawImage(memoryMask, vis.x * S, vis.y * S, vis.w * S, vis.h * S, vis.x, vis.y, vis.w, vis.h);
       worldCtx.globalCompositeOperation = 'lighter';
       worldCtx.fillStyle = '#141110';
       worldCtx.fillRect(vis.x, vis.y, vis.w, vis.h);
@@ -1341,6 +1399,7 @@ export const draw = (now: number) => {
   }
 
   drawLockFlashes(worldCtx);
+  drawAwakePlates(view);
   if (!skip.has('objects')) drawObjects(view, groups);
   perfMark('objects');
 
@@ -1350,6 +1409,43 @@ export const draw = (now: number) => {
   perfMark('screen');
   perfFrameEnd();
   drawHud(rayCount, lightCount, groups.length);
+}
+
+// Lit plates in line of sight wake (over PLATE_MID_MS) into their door's kind of mid, drawn over
+// the darkness at full art rather than as lit as the floor, so they shine. Going dark they wink
+// out: shift to dead (still shining), flare, and fade into the dark.
+const drawAwakePlates = (view: Point[][]) => {
+  const c = worldCtx;
+  for (const door of doors) {
+    if (door.kind === 'lever') continue;
+    const at = cellCenter(door.trigger), mid: ObjectKind = door.kind === 'locked' ? 'plateMidLock' : 'plateMidStd';
+    const wink = frameTime - door.winkAt, winking = wink < PLATE_WINK_SHIFT_MS + PLATE_WINK_FLARE_MS + PLATE_WINK_FADE_MS;
+    if (door.plateWake === 0 && !winking) continue;
+    if (viewMode === 'normal' && !insideAny(at, view)) continue;
+    if (door.plateWake > 0) {
+      c.globalAlpha = door.plateWake / PLATE_MID_MS;
+      drawObject(c, mid, at.x, at.y, 0, false);
+      continue;
+    }
+    const from = door.winkFrom;
+    if (wink < PLATE_WINK_SHIFT_MS) {
+      c.globalAlpha = from;
+      drawObject(c, 'plateDead', at.x, at.y, 0, false);
+      c.globalAlpha = from * (1 - wink / PLATE_WINK_SHIFT_MS);
+      drawObject(c, mid, at.x, at.y, 0, false);
+      continue;
+    }
+    const t = wink - PLATE_WINK_SHIFT_MS;
+    c.globalAlpha = from * (t < PLATE_WINK_FLARE_MS ? 1 : 1 - (t - PLATE_WINK_FLARE_MS) / PLATE_WINK_FADE_MS);
+    drawObject(c, 'plateDead', at.x, at.y, 0, false);
+    if (t < PLATE_WINK_FLARE_MS) {
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = from * PLATE_WINK_FLARE * Math.sin(Math.PI * t / PLATE_WINK_FLARE_MS);
+      drawObject(c, 'plateDead', at.x, at.y, 0, false);
+      c.globalCompositeOperation = 'source-over';
+    }
+  }
+  c.globalAlpha = 1;
 }
 
 // Dropped lights in line of sight, lights waiting to be found where they're lit and in sight (at
@@ -1379,8 +1475,11 @@ const drawObjects = (view: Point[][], groups: LightGroup[]) => {
   drawShines(worldCtx);
 }
 
-// The fps line (and, with ?perf, the timings) over the screen.
+// The fps line (and, with ?perf, the timings) over the screen: only with ?fps or ?perf, or in the
+// editor's playtest.
+const showHud = params.has('fps') || perfParam !== null || params.has('playtest');
 const drawHud = (rayCount: number, lightCount: number, groupCount: number) => {
+  if (!showHud) return;
   ctx.fillStyle = '#0f0';
   ctx.font = '12px monospace';
   ctx.fillText(`${fps} fps · ${rayCount} rays · ${lightCount} lights · ${groupCount} light groups`, 8, 16);

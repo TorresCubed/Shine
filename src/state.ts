@@ -41,17 +41,20 @@ export const gameState: { status: 'playing' | 'won'; startedAt: number } = { sta
 // at some point. wasUnlocked: a locked door's state last frame (null before its first), and
 // lockFlashAt when it last changed (performance.now() clock), for the flash that shows it even in fog.
 // showWhole: this frame it's seen, or (seen before) it's doing something, so it's shown as it is,
-// all of it, even in fog (the renderer refreshes its memory).
+// all of it, even in fog (the renderer refreshes its memory). plateWake: how long its plate has been
+// waking, in ms, from 0 (dead) to PLATE_MID_MS (awake), while triggerOn. Going dark it drops to 0
+// and winks out instead: winkAt when (performance.now() clock), winkFrom how awake it was (0-1).
 export type DoorState = Door & {
   openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean;
-  everSeen: boolean; wasUnlocked: boolean | null; lockFlashAt: number; showWhole: boolean;
+  everSeen: boolean; wasUnlocked: boolean | null; lockFlashAt: number; showWhole: boolean; plateWake: number; winkAt: number; winkFrom: number;
 };
 // Mirrors: `step` is where it's turning to; `shownStep` is where it actually is (fractional mid-turn),
 // which light, collision and drawing all use, with `turnLeft` steps still to go (always forward) at
 // `turnSpeed` steps a second.
 // seenStep is the orientation the player last saw it at, for fog of war. everSeen: the player has
-// seen it at some point, so they see it turn (all of it) whatever turns it, even in fog.
-export type MirrorState = Mirror & { shownStep: number; turnLeft: number; turnSpeed: number; seenStep: number; everSeen: boolean };
+// seen it at some point, so they see it turn (all of it) whatever turns it, even in fog. turned: how
+// many steps it's turned since the level began, never wrapping (a wheel that turns it shows this).
+export type MirrorState = Mirror & { shownStep: number; turnLeft: number; turnSpeed: number; seenStep: number; everSeen: boolean; turned: number };
 // pulled: pulled since the renderer last showed it (all of it, even in fog).
 export type LeverState = Lever & { on: boolean; pulled: boolean };
 
@@ -99,9 +102,9 @@ export const footprintCells = (x: number, y: number): GridPos[] => {
 export const loadLevel = (level: Level) => {
   levelWalls = level.walls;
   doors = level.doors.map(d => ({
-    ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false, everSeen: false, wasUnlocked: null, lockFlashAt: -Infinity, showWhole: false,
+    ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false, everSeen: false, wasUnlocked: null, lockFlashAt: -Infinity, showWhole: false, plateWake: 0, winkAt: -Infinity, winkFrom: 0,
   }));
-  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, turnSpeed: 0, seenStep: m.step, everSeen: false }));
+  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, turnSpeed: 0, seenStep: m.step, everSeen: false, turned: 0 }));
   levers = level.levers.map(l => ({ ...l, on: false, pulled: false }));
   lamps = level.lamps;
   start = level.start;
