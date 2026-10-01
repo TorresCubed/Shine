@@ -1,7 +1,7 @@
 import type { LightGroup } from "./rayTracer";
 import type { Point } from "./interfaces";
 import { brightnessAt, insideAny } from "./rayTracer";
-import { LIT_THRESHOLD, DOOR_OPEN_MS, DOOR_CREAK, DOOR_CREAK_MS, DOOR_SLAM_MS, PLATE_MID_MS } from "./consts";
+import { LIT_THRESHOLD, DOOR_OPEN_MS, DOOR_CREAK, DOOR_CREAK_MS, DOOR_SLAM_MS, PLATE_WAKE_MS } from "./consts";
 import { doors, levers, player, footprintCells, doorLeaves } from "./state";
 import type { DoorState } from "./state";
 import { cellCenter, sameCell } from "./util";
@@ -38,11 +38,11 @@ export const updateDoors = (groups: LightGroup[], view: Point[][], dt: number) =
       ? levers.some(l => l.on && sameCell(l, door.trigger))
       : brightnessAt(cellCenter(door.trigger), groups) >= LIT_THRESHOLD;
     if (door.triggerOn) {
-      door.plateWake = Math.min(PLATE_MID_MS, door.plateWake + dt * 1000);
+      door.plateWake = Math.min(PLATE_WAKE_MS, door.plateWake + dt * 1000);
       door.winkAt = -Infinity;
     } else if (door.plateWake > 0) {
       door.winkAt = performance.now();
-      door.winkFrom = door.plateWake / PLATE_MID_MS;
+      door.winkFrom = door.plateWake / PLATE_WAKE_MS;
       door.plateWake = 0;
     }
     const inTheWay = door.leaves.some(l => underPlayer.some(c => sameCell(c, l.into)));

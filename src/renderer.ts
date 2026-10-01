@@ -11,7 +11,7 @@ import {
   CANDLE_RADIUS, LAMP_RADIUS, FLASHLIGHT_RANGE, FLASHLIGHT_CONE, MAX_MIRROR_BOUNCES, GRID_SIZE, TARGET_FPS,
   CANDLE_RAY_COUNT, LIT_FLOOR_STRENGTH, LIT_FLOOR_TINT, FOG_MEMORY_SCALE, FOG_FALLOFF_SHOULDER, FOG_FLOOR_BRIGHTNESS, FOG_VISIBILITY, MEMORY_FADE_S, MEMORY_FADE_MIN,
   LIGHT_IGNITE_MS, WALL_LIGHT_PENETRATION, LIGHT_FALLOFF_STOPS, PLAYER_SPRITES, FLASHLIGHT_BACK, LIGHT_EDGE_GAP, SHADOW_SOFT_STEPS,
-  PLAYER_SPRITE_SCALE, OBJECT_SPRITES, PLATE_MID_MS, PLATE_WINK_SHIFT_MS, PLATE_WINK_FLARE_MS, PLATE_WINK_FADE_MS, PLATE_WINK_FLARE, MIRROR_STEPS, DOOR_ART_WIDTH, FLAME_FLICKER_REACH, FLAME_FLICKER_BRIGHTNESS,
+  PLAYER_SPRITE_SCALE, OBJECT_SPRITES, PLATE_WAKE_MS, PLATE_WINK_SHIFT_MS, PLATE_WINK_FLARE_MS, PLATE_WINK_FADE_MS, PLATE_WINK_FLARE, MIRROR_STEPS, DOOR_ART_WIDTH, FLAME_FLICKER_REACH, FLAME_FLICKER_BRIGHTNESS,
   IDLE_STYLE, IDLE_BREATHE, IDLE_BOB, IDLE_PERIOD_MS, IDLE_FADE_MS, ZOOM_EASE_MS, PUNCH_SCALE, PUNCH_MS, LEVER_FLICK_MS,
   DUST_PER_CELL, DUST_SPEED, DUST_SIZE, DUST_BRIGHTNESS, DUST_TWINKLE_MS, WIN_DIM, WIN_FADE_MS, CARD_FADE_MS,
   CAMERA_PAN_RETURN,
@@ -1412,20 +1412,20 @@ export const draw = (now: number) => {
   drawHud(rayCount, lightCount, groups.length);
 }
 
-// Lit plates in line of sight wake (over PLATE_MID_MS) into their door's kind of mid, drawn over
+// Lit plates in line of sight wake (over PLATE_WAKE_MS) into their door's kind of active, drawn over
 // the darkness at full art rather than as lit as the floor, so they shine. Going dark they wink
 // out: shift to dead (still shining), flare, and fade into the dark.
 const drawAwakePlates = (view: Point[][]) => {
   const c = worldCtx;
   for (const door of doors) {
     if (door.kind === 'lever') continue;
-    const at = cellCenter(door.trigger), mid: ObjectKind = door.kind === 'locked' ? 'plateMidLock' : 'plateMidStd';
+    const at = cellCenter(door.trigger), active: ObjectKind = door.kind === 'locked' ? 'plateActiveLock' : 'plateActiveStd';
     const wink = frameTime - door.winkAt, winking = wink < PLATE_WINK_SHIFT_MS + PLATE_WINK_FLARE_MS + PLATE_WINK_FADE_MS;
     if (door.plateWake === 0 && !winking) continue;
     if (viewMode === 'normal' && !insideAny(at, view)) continue;
     if (door.plateWake > 0) {
-      c.globalAlpha = door.plateWake / PLATE_MID_MS;
-      drawObject(c, mid, at.x, at.y, 0, false);
+      c.globalAlpha = door.plateWake / PLATE_WAKE_MS;
+      drawObject(c, active, at.x, at.y, 0, false);
       continue;
     }
     const from = door.winkFrom;
@@ -1433,7 +1433,7 @@ const drawAwakePlates = (view: Point[][]) => {
       c.globalAlpha = from;
       drawObject(c, 'plateDead', at.x, at.y, 0, false);
       c.globalAlpha = from * (1 - wink / PLATE_WINK_SHIFT_MS);
-      drawObject(c, mid, at.x, at.y, 0, false);
+      drawObject(c, active, at.x, at.y, 0, false);
       continue;
     }
     const t = wink - PLATE_WINK_SHIFT_MS;

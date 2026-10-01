@@ -42,7 +42,7 @@ export const gameState: { status: 'playing' | 'won'; startedAt: number } = { sta
 // lockFlashAt when it last changed (performance.now() clock), for the flash that shows it even in fog.
 // showWhole: this frame it's seen, or (seen before) it's doing something, so it's shown as it is,
 // all of it, even in fog (the renderer refreshes its memory). plateWake: how long its plate has been
-// waking, in ms, from 0 (dead) to PLATE_MID_MS (awake), while triggerOn. Going dark it drops to 0
+// waking, in ms, from 0 (dead) to PLATE_WAKE_MS (active), while triggerOn. Going dark it drops to 0
 // and winks out instead: winkAt when (performance.now() clock), winkFrom how awake it was (0-1).
 export type DoorState = Door & {
   openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean;

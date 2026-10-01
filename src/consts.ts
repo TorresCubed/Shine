@@ -25,7 +25,7 @@ export const OBJECT_SPRITES = {
   // Stairs fill their cell: the way in at the start, and the way on at the exit.
   stairs: { file: 'Stairs.png', anchor: { x: 32, y: 32 } },
   stairsExit: { file: 'StairsExit.png', anchor: { x: 32, y: 32 } },
-  // Plates fill their cell: dead while dark, waking to their door's kind of mid while lit.
+  // Plates fill their cell: dead while dark, waking to their door's kind of active while lit.
   plateDead: { file: 'plateDead.png', anchor: { x: 32, y: 32 } },
   // A lever on, off, and mid-flick between. A lever that turns mirrors is a wheel instead, turning
   // with them, about its hub.
@@ -35,8 +35,8 @@ export const OBJECT_SPRITES = {
   wheel: { file: 'wheel.png', anchor: { x: 32.5, y: 28.5 } },
   // A door's leaf (every kind): upright, the hinge at the top, the leaf's centre line on the anchor's column.
   door: { file: 'door.png', anchor: { x: 31, y: 0 } },
-  plateMidStd: { file: 'plateMidStd.png', anchor: { x: 32, y: 32 } },
-  plateMidLock: { file: 'plateMidLock.png', anchor: { x: 32, y: 32 } },
+  plateActiveStd: { file: 'plateActiveStd.png', anchor: { x: 32, y: 32 } },
+  plateActiveLock: { file: 'plateActiveLock.png', anchor: { x: 32, y: 32 } },
 };
 // Standing still, the player sprite idles: 'breathe' swells and shrinks it slightly (reads as
 // breathing, seen from above), 'bob' moves it up and down the screen. Only the drawing moves.
@@ -158,8 +158,8 @@ export const DOOR_OPEN_MS = 1000;
 export const DOOR_CREAK = 0.2;
 export const DOOR_CREAK_MS = 700;
 export const DOOR_SLAM_MS = 120;
-// A plate lit fades from dead to mid over this long.
-export const PLATE_MID_MS = 750;
+// A plate lit fades from dead to active over this long.
+export const PLATE_WAKE_MS = 750;
 // Going dark it winks out: shifts to dead (still shining), flares, then fades into the dark.
 export const PLATE_WINK_SHIFT_MS = 720;
 export const PLATE_WINK_FLARE_MS = 550;
