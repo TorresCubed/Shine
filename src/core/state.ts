@@ -1,4 +1,4 @@
-import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Segment, Wall } from "./interfaces";
+import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Segment, Wall } from "./types";
 import { GRID_SIZE, PLAYER } from "./consts";
 import { cellCenter, easeInOut } from "./util";
 
@@ -6,7 +6,7 @@ import { cellCenter, easeInOut } from "./util";
 // loadLevel reassigns them.
 
 export const keysDown = new Set<string>();
-// The on-screen stick (touchControls.ts): how far it's pushed, each axis -1..1 and at most 1 long
+// The on-screen stick (input/touch.ts): how far it's pushed, each axis -1..1 and at most 1 long
 // (0, 0 when let go). `touch` turns on at the first touch, for touch-only controls and prompts.
 export const stick = { x: 0, y: 0 };
 export const input = { touch: false };

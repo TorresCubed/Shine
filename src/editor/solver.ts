@@ -1,6 +1,6 @@
-import type { Level } from "../interfaces";
-import { GRID_SIZE, PLAYER, LIGHT } from "../consts";
-import { brightnessAt } from "../rayTracer";
+import type { Level } from "../core/types";
+import { GRID_SIZE, PLAYER, LIGHT } from "../core/consts";
+import { brightnessAt } from "../light/rayTracer";
 import { traceLevel } from "./preview";
 
 // Every way to win a flashlight-only level: set the turnable (and lever-turned) mirrors, drop the

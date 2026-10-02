@@ -1,0 +1,17 @@
+/* Top right, clear of notches. */
+.touch-bar {
+  position: fixed; display: flex; gap: 10px;
+  top: calc(env(safe-area-inset-top) + 12px); right: calc(env(safe-area-inset-right) + 12px);
+}
+/* Bottom centre, while the flashlight's in hand. */
+.aim-bar {
+  position: fixed; display: flex; gap: 28px; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+}
+.touch-button {
+  width: 48px; height: 48px; border-radius: 50%; padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.45); color: rgba(255, 255, 255, 0.8);
+  font: 22px sans-serif;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.touch-button.aim { width: 56px; height: 56px; }

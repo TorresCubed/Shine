@@ -1,5 +1,5 @@
-import type { Door, DoorLeaf, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Wall } from "./interfaces";
-import { GRID_SIZE } from "./consts";
+import type { Door, DoorLeaf, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Wall } from "../core/types";
+import { GRID_SIZE } from "../core/consts";
 
 // Levels are text maps, one character per grid cell:
 //   '#' wall   '.' floor   'S' start   'G' goal (both against an edge wall: future entrance/exit)

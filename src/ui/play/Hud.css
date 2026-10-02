@@ -1,0 +1,25 @@
+/* Beside the menu button. */
+.hud {
+  position: fixed; z-index: 5; display: flex; gap: 8px; align-items: flex-end;
+  top: calc(env(safe-area-inset-top) + 12px); left: calc(env(safe-area-inset-left) + 66px);
+}
+.hud-slot {
+  position: relative; box-sizing: border-box; padding: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: rgba(0, 0, 0, 0.5); font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.hud-hand { width: 52px; height: 52px; border: 2px solid var(--gold-dim); }
+.hud-pocket { width: 42px; height: 42px; border: 2px solid rgba(255, 255, 255, 0.22); cursor: pointer; }
+.hud-pocket:hover { border-color: var(--gold-dim); }
+.hud-pocket .hud-icon { opacity: 0.6; } /* switched off */
+.hud-slot.empty { background: rgba(0, 0, 0, 0.25); border-style: dashed; border-color: rgba(255, 255, 255, 0.15); }
+.hud-pocket.empty { cursor: default; }
+.hud-icon { background-repeat: no-repeat; image-rendering: pixelated; }
+.hud-label {
+  position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  font: 600 11px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  text-shadow: 0 0 4px #000;
+}
+.hud-slot.pop { animation: hud-pop 220ms ease-out; }
+@keyframes hud-pop { 40% { transform: scale(1.12); } }

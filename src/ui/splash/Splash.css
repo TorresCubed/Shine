@@ -1,0 +1,17 @@
+/* Over the game, under the menus. */
+.splash {
+  position: fixed; inset: 0; z-index: 9; overflow: hidden; background: #000;
+  opacity: 0; pointer-events: none; transition: opacity 700ms ease;
+}
+.splash.shown { opacity: 1; pointer-events: auto; }
+.splash-rig { position: absolute; left: 0; top: 0; will-change: transform; }
+.splash-glow {
+  position: absolute; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle,
+    rgba(255, 222, 150, 0.6) 0%, rgba(255, 180, 80, 0.36) 6%, rgba(240, 130, 45, 0.18) 18%,
+    rgba(160, 70, 20, 0.08) 34%, rgba(60, 25, 8, 0.03) 50%, rgba(0, 0, 0, 0) 62%);
+}
+.splash-candle {
+  position: absolute; left: 0; top: 0; display: block;
+  image-rendering: pixelated; user-select: none; -webkit-user-drag: none;
+}

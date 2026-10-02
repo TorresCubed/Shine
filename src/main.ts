@@ -1,64 +1,25 @@
-import { GRID_SIZE, FOG, CAMERA, TRANSITION } from "./consts";
-import { initTouchControls } from "./touchControls";
-import { screenDark, cardShown } from "./transition";
-import { keysDown, gameState, loadLevel, camera, stick, player } from "./state";
-import { levels, fromMap } from "./levels";
-import type { Level } from "./interfaces";
-import { draw, loadAssets, setViewMode, nextViewMode, snapZoom, screenToWorld } from "./renderer";
-import { act, swapHeldLight, tapAt, fear } from "./playerLogic";
-import { initHud } from "./hud";
-import { initMenu, open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from "./menu";
-import { LEVEL_HINTS } from "./levelInfo";
-import { markCompleted, markPlayed, lastPlayed } from "./progress";
-import { playSplash, skipSplash, splashPlaying, hideSplash } from "./splash";
+import { GRID_SIZE, CAMERA, TRANSITION } from "./core/consts";
+import { initTouchControls } from "./input/touch";
+import { screenDark, cardShown } from "./render/transition";
+import { canvas, sizeScreen, setWorldSize, clampZoom, fitZoom } from "./render/canvases";
+import { keysDown, gameState, loadLevel, camera, stick, player } from "./core/state";
+import { levels, fromMap } from "./content/levels";
+import type { Level } from "./core/types";
+import { draw } from "./render/draw";
+import { loadAssets } from "./render/art";
+import { setViewMode, nextViewMode } from "./render/frame";
+import { snapZoom, screenToWorld } from "./render/camera";
+import { act, swapHeldLight, tapAt, fear } from "./game/player";
+import { mountUi } from "./ui/App";
+import { open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from "./ui/store";
+import { LEVEL_HINTS } from "./content/help";
+import { markCompleted, markPlayed, lastPlayed } from "./game/progress";
+import { playSplash, skipSplash, splashPlaying, hideSplash } from "./ui/splash/state";
 
-// The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
-export const canvas = document.getElementById('game') as HTMLCanvasElement;
-export const ctx = canvas.getContext('2d')!;
-
-// The whole level, drawn at 1px per world pixel. Everything below is sized to the level too, so
-// levels can be bigger than the window.
-export const worldCanvas = document.createElement('canvas');
-export const worldCtx = worldCanvas.getContext('2d')!;
-
-// Fog memory: a low-res grayscale mask, each pixel the brightest that spot has ever been seen lit.
-export const exploredCanvas = document.createElement('canvas');
-export const exploredCtx = exploredCanvas.getContext('2d')!;
-// The same, but fading while out of sight (see FOG.fadeS): how recently each spot was seen. Kept
-// inverted (black = just seen, white = forgotten), so fading is exact (see renderer fadeMemory).
-export const recentCanvas = document.createElement('canvas');
-export const recentCtx = recentCanvas.getContext('2d')!;
-
-// All of this frame's light regions, added together, before going onto the world canvas.
-export const litLayer = document.createElement('canvas');
-export const litCtx = litLayer.getContext('2d')!;
-
-// Scratch canvas each single light region is built on.
-export const regionLayer = document.createElement('canvas');
-export const regionCtx = regionLayer.getContext('2d')!;
-
-// The canvas has one pixel per physical screen pixel (so the browser never rescales it, e.g. with
-// Windows display scaling), and is shown at the window's size.
-export let pixelRatio = 1;
 const resize = () => {
-  pixelRatio = window.devicePixelRatio || 1;
-  canvas.width = Math.round(window.innerWidth * pixelRatio);
-  canvas.height = Math.round(window.innerHeight * pixelRatio);
-  canvas.style.width = `${window.innerWidth}px`;
-  canvas.style.height = `${window.innerHeight}px`;
+  sizeScreen();
   // Still showing the whole level (not zoomed since): keep it fitted, e.g. when a phone turns.
   if (camera.fitted && levelIndex >= 0) { camera.zoom = fitZoom(); snapZoom(); }
-}
-
-// Sizes every world layer to the level, which also wipes the fog memory.
-const setWorldSize = (width: number, height: number) => {
-  for (const c of [worldCanvas, regionLayer, litLayer]) { c.width = width; c.height = height; }
-  for (const [c, x] of [[exploredCanvas, exploredCtx], [recentCanvas, recentCtx]] as const) {
-    c.width = Math.ceil(width * FOG.memoryScale);
-    c.height = Math.ceil(height * FOG.memoryScale);
-    x.fillStyle = c === recentCanvas ? 'white' : 'black'; // nothing remembered (the recent memory is inverted)
-    x.fillRect(0, 0, c.width, c.height);
-  }
 }
 
 // Playtest (opened from the level editor as ?playtest&view=fog|bright): just the level the editor
@@ -111,22 +72,6 @@ const leaveTo = (index: number, fadeOutMs: number, fadeInMs?: number, fresh?: bo
   cardShown.go(0, fadeOutMs);
   screenDark.go(1, fadeOutMs, () => startLevel(index, fadeInMs, fresh));
 }
-
-// Zoom is screen px per world px. From 1 up it's whole numbers only, so every art pixel is an exact
-// square of screen pixels, except exactly fitting the level (which fills the screen) and mid-pinch
-// (`free`). Below 1 (only to fit a level bigger than the screen) it's continuous, down to where the
-// whole level fits. The most is CAMERA.maxZoom art px per CSS px, so a phone's dense screen can
-// zoom in as far, to the eye, as a desktop one.
-const exactFit = () => Math.min(canvas.width / worldCanvas.width, canvas.height / worldCanvas.height);
-export const clampZoom = (zoom: number, free = false) => {
-  const fit = exactFit();
-  const max = Math.max(CAMERA.maxZoom, Math.floor(CAMERA.maxZoom * pixelRatio));
-  const z = Math.min(max, Math.max(Math.min(fit, 1), zoom));
-  if (free || z < 1 || Math.abs(z - fit) < 1e-6) return z;
-  return Math.floor(z);
-}
-// The closest zoom that shows the whole level.
-export const fitZoom = () => clampZoom(exactFit());
 
 // A new level opens fitted, as an overview; after CAMERA.start.overviewMs the camera glides in to show
 // about CAMERA.start.viewCells cells across the screen's shorter side (the nearest whole zoom, so the art
@@ -226,8 +171,6 @@ window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
 // otherwise it's tapAt, on whatever's under it.
 initTouchControls(canvas, {
   onTap: (x, y) => isMenuOpen() ? undefined : gameState.status === 'won' ? nextLevel() : tapAt(screenToWorld(x, y)),
-  onSwap: swapHeldLight,
-  onRestart: restart,
   clampZoom,
   fitZoom,
 });
@@ -241,8 +184,7 @@ window.addEventListener('wheel', (e) => {
   wheelTotal = 0;
 }, { passive: false });
 
-initMenu({ play, resume: () => {}, restart, levelCount: playLevels.length });
-initHud(() => playing && !isMenuOpen(), swapHeldLight); // what you're carrying, while you play
+mountUi({ play, restart, swapLights: swapHeldLight, levelCount: playLevels.length });
 
 resize();
 // ?level=N goes straight into level N (numbered from 1), as does the editor's playtest. Otherwise the

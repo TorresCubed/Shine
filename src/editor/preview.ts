@@ -1,11 +1,11 @@
-import { castLight, castFlashlight, brightnessAt } from "../rayTracer";
-import type { LightGroup } from "../rayTracer";
-import { getScene } from "../scene";
-import { cellCenter } from "../util";
-import { doorLeaves } from "../state";
-import type { MirrorState } from "../state";
-import type { Level, LightKind, Point } from "../interfaces";
-import { GRID_SIZE, PLAYER, LIGHT, FLAME, FLASHLIGHT } from "../consts";
+import { castLight, castFlashlight, brightnessAt } from "../light/rayTracer";
+import type { LightGroup } from "../light/rayTracer";
+import { getScene } from "../light/scene";
+import { cellCenter } from "../core/util";
+import { doorLeaves } from "../core/state";
+import type { MirrorState } from "../core/state";
+import type { Level, LightKind, Point } from "../core/types";
+import { GRID_SIZE, PLAYER, LIGHT, FLAME, FLASHLIGHT } from "../core/consts";
 
 // A level's light as it would be in the game, with the real ray tracer: its lamps,
 // candles standing on the floor, plus any lights put down to try things (a flashlight shining from

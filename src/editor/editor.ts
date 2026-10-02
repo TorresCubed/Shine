@@ -1,9 +1,9 @@
-import { levelSources, fromMap } from "../levels";
-import type { Side } from "../levels";
-import { doorLeaves } from "../state";
-import type { Level, LightKind } from "../interfaces";
-import type { LightGroup } from "../rayTracer";
-import { GRID_SIZE, LIGHT } from "../consts";
+import { levelSources, fromMap } from "../content/levels";
+import type { Side } from "../content/levels";
+import { doorLeaves } from "../core/state";
+import type { Level, LightKind } from "../core/types";
+import type { LightGroup } from "../light/rayTracer";
+import { GRID_SIZE, LIGHT } from "../core/consts";
 import { blank, fromSource, toSource, exportCode, pairsInUse, parseEdge, edgeString } from "./levelCode";
 import type { Cell, Control, Aim, DoorKind, Doc } from "./levelCode";
 import { traceLevel } from "./preview";

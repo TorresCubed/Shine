@@ -1,16 +1,14 @@
-// Hints for the levels that bring in something new (by level number, from 1), for keyboard and for
-// touch, and the controls for the How to Play screen. Levels go by number only.
-
-type Hint = { keys: string; touch: string };
+// `both` when keys and touch say the same.
+export type Hint = { keys: string; touch: string } | { both: string };
 export const LEVEL_HINTS: Record<number, Hint> = {
   1: { keys: 'WASD or the arrow keys to walk. Find the stairs down.', touch: 'Drag anywhere to walk. Find the stairs down.' },
-  4: { keys: 'Light a plate and its door opens.', touch: 'Light a plate and its door opens.' },
+  4: { both: 'Light a plate and its door opens.' },
   5: {
-    keys: 'Space puts your candle down. It keeps shining, but without it you can only walk where it\'s lit. R restarts.',
-    touch: 'Tap yourself to put your candle down. It keeps shining, but without it you can only walk where it\'s lit. ↻ restarts.',
+    keys: 'Space sets your candle down. It keeps shining, but without it you can only walk where it\'s lit. R restarts.',
+    touch: 'Tap yourself to set your candle down. It keeps shining, but without it you can only walk where it\'s lit. ↻ restarts.',
   },
-  6: { keys: 'A locked door unlocks while its plate is lit. Walk into it then and it stays open.', touch: 'A locked door unlocks while its plate is lit. Walk into it then and it stays open.' },
-  7: { keys: 'Lamps light their room, and light adds up.', touch: 'Lamps light their room, and light adds up.' },
+  6: { both: 'A locked door unlocks while its plate is lit. Walk into it then and it stays open.' },
+  7: { both: 'Lamps light their room, and light adds up.' },
   8: {
     keys: 'Space picks up the flashlight. You hold one light and pocket the other: F swaps.',
     touch: 'Tap yourself to pick up the flashlight. You hold one light and pocket the other: ⇄ swaps.',

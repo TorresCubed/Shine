@@ -1,0 +1,10 @@
+.hint {
+  position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
+  width: max-content; max-width: min(620px, calc(100vw - 32px));
+  padding: 9px 18px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--line);
+  color: var(--text); text-align: center; font: 18px/1.35 var(--body);
+  pointer-events: none; opacity: 0; transition: opacity 600ms ease;
+}
+.hint.shown { opacity: 1; }
+.hint.touch { bottom: calc(env(safe-area-inset-bottom) + 96px); } /* above the aim buttons */

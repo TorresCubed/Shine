@@ -1,4 +1,4 @@
-import type { GridPos, Point, Segment } from "./interfaces";
+import type { GridPos, Point, Segment } from "./types";
 import { GRID_SIZE, MIRROR } from "./consts";
 
 export const cellCenter = (c: GridPos): Point => ({ x: (c.gridX + 0.5) * GRID_SIZE, y: (c.gridY + 0.5) * GRID_SIZE });

@@ -1,7 +1,7 @@
-import type { Scene, Segment, Wall } from "./interfaces";
-import type { MirrorState } from "./state";
-import { SCENE_STRIDE } from "./interfaces";
-import { mirrorSegment } from "./util";
+import type { Scene, Segment, Wall } from "../core/types";
+import type { MirrorState } from "../core/state";
+import { SCENE_STRIDE } from "../core/types";
+import { mirrorSegment } from "../core/util";
 
 const wallEdges = (w: Wall): Segment[] => {
   const x2 = w.x + w.w, y2 = w.y + w.h;

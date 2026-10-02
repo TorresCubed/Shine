@@ -1,0 +1,13 @@
+.stick {
+  position: fixed; left: 0; top: 0; box-sizing: border-box;
+  width: calc(var(--radius) * 2); height: calc(var(--radius) * 2);
+  margin: calc(var(--radius) * -1) 0 0 calc(var(--radius) * -1);
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+.stick-knob {
+  --size: calc(var(--radius) * 0.8);
+  position: absolute; left: 50%; top: 50%;
+  width: var(--size); height: var(--size); margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  border-radius: 50%; background: rgba(255, 255, 255, 0.3);
+}

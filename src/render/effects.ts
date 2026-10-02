@@ -1,0 +1,118 @@
+import type { Segment, Wall } from "../core/types";
+import { GRID_SIZE, DUST, DOOR } from "../core/consts";
+import { levelWalls, doors, doorLeaves, shines } from "../core/state";
+import { pixelRatio, worldCanvas } from "./canvases";
+import { frameTime } from "./frame";
+import { signedArea } from "./geometry";
+import type { Bounds } from "./geometry";
+import { screenView } from "./camera";
+
+// Game feel: drawing-only touches that make the world react (the light itself stays steady).
+
+// A door leaf as a filled quad, DOOR.artWidth wide (for a locked door's flash).
+const leafPath = (c: CanvasRenderingContext2D, s: Segment) => {
+  const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1;
+  const nx = -(s.y2 - s.y1) / len * DOOR.artWidth / 2, ny = (s.x2 - s.x1) / len * DOOR.artWidth / 2;
+  const q = [{ x: s.x1 + nx, y: s.y1 + ny }, { x: s.x2 + nx, y: s.y2 + ny }, { x: s.x2 - nx, y: s.y2 - ny }, { x: s.x1 - nx, y: s.y1 - ny }];
+  if (signedArea(q) < 0) q.reverse();
+  c.moveTo(q[0].x, q[0].y);
+  for (const p of q) c.lineTo(p.x, p.y);
+  c.closePath();
+}
+
+// When a locked door unlocks (or locks again) it flashes green (or red),
+// glowing up and fading back to how it looked, over LOCK_FLASH_MS. It shows even in fog, where
+// nothing else changes unseen, so you know your light reached its plate; but only once you've seen
+// the door, so it never gives away one you haven't found.
+const LOCK_FLASH_MS = 900;
+export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
+  for (const door of doors) {
+    const t = (frameTime - door.lockFlashAt) / LOCK_FLASH_MS;
+    if (door.kind !== 'locked' || !door.everSeen || t < 0 || t >= 1) continue;
+    const color = door.triggerOn || door.opened ? '#7dff5a' : '#ff4a3a';
+    c.save();
+    c.globalAlpha = Math.sin(Math.PI * Math.sqrt(t)); // quick to flare, slower to fade
+    c.fillStyle = c.shadowColor = color;
+    c.shadowBlur = 0.4 * GRID_SIZE;
+    c.beginPath();
+    for (const s of doorLeaves(door, door.seenOpenAmount)) leafPath(c, s);
+    c.fill();
+    c.restore();
+  }
+}
+
+// A shine where a light was picked up or dropped: a warm glow that flares and fades, and a four-point
+// glint (long rays up/down/left/right, short diagonal ones) that grows, turns a little and shrinks
+// away, over SHINE_MS. Drawn on top of everything, added ('lighter') so it glows. Its size is in
+// cells, but never under SHINE_MIN_CSS_PX on screen, so it still reads zoomed out on a phone.
+// The candle's glow colour (the warm tint a lit region gets), shared with the shine so it matches.
+const CANDLE_GLOW_RGB = '255, 220, 150';
+const SHINE_MS = 750;
+const SHINE_SIZE = 0.2;       // cells, the long rays' length at their longest
+const SHINE_MIN_CSS_PX = 20;
+export const drawShines = (c: CanvasRenderingContext2D) => {
+  for (let i = shines.length - 1; i >= 0; i--) if (frameTime - shines[i].at >= SHINE_MS) shines.splice(i, 1);
+  const size = Math.max(SHINE_SIZE * GRID_SIZE, SHINE_MIN_CSS_PX * pixelRatio / screenView.zoom);
+  c.save();
+  c.globalCompositeOperation = 'lighter';
+  for (const s of shines) {
+    const t = Math.max(0, (frameTime - s.at) / SHINE_MS);
+    const strength = Math.sin(Math.PI * Math.sqrt(t)); // flares quickly, fades slower
+    const glow = c.createRadialGradient(s.x, s.y, 0, s.x, s.y, size * (0.4 + 0.4 * t));
+    glow.addColorStop(0, `rgba(${CANDLE_GLOW_RGB}, ${0.55 * strength})`);
+    glow.addColorStop(1, `rgba(${CANDLE_GLOW_RGB}, 0)`);
+    c.fillStyle = glow;
+    c.fillRect(s.x - size, s.y - size, size * 2, size * 2);
+
+    // The glint: thin tapered rays, each a diamond from the centre.
+    c.translate(s.x, s.y);
+    c.rotate(t * Math.PI /2);
+    c.fillStyle = `rgba(${CANDLE_GLOW_RGB}, ${0.6 * strength})`;
+    const ray = (angle: number, len: number, width: number) => {
+      c.save();
+      c.rotate(angle);
+      c.beginPath();
+      c.moveTo(0, -width); c.lineTo(len, 0); c.lineTo(0, width); c.lineTo(-len, 0);
+      c.closePath();
+      c.fill();
+      c.restore();
+    };
+    const len = size * strength, width = size * 0.07;
+    ray(0, len, width);
+    ray(Math.PI / 2, len, width);
+    ray(Math.PI / 4, len * 0.45, width * 0.8);
+    ray(-Math.PI / 4, len * 0.45, width * 0.8);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  c.restore();
+}
+
+// Dust: motes drifting slowly across the whole level, each wandering a little and slowly twinkling.
+// Drawn onto the lit area 'source-atop' (see draw), so dust only shows where there's light,
+// brightest near it. Scattered afresh for each new level.
+type Mote = { x: number; y: number; heading: number; speed: number; phase: number };
+let dust: Mote[] = [];
+let dustFor: Wall[] | null = null;
+export const updateDust = (dt: number) => {
+  const w = worldCanvas.width, h = worldCanvas.height;
+  if (dustFor !== levelWalls) {
+    dustFor = levelWalls;
+    dust = Array.from({ length: Math.round(w * h / (GRID_SIZE * GRID_SIZE) * DUST.perCell) }, () => ({
+      x: Math.random() * w, y: Math.random() * h, heading: Math.random() * Math.PI * 2,
+      speed: DUST.speed * (0.5 + Math.random()), phase: Math.random() * Math.PI * 2,
+    }));
+  }
+  for (const m of dust) {
+    m.heading += (Math.random() - 0.5) * 2 * dt; // a slow random wander
+    m.x = (m.x + Math.cos(m.heading) * m.speed * dt + w) % w;
+    m.y = (m.y + Math.sin(m.heading) * m.speed * dt + h) % h;
+  }
+}
+export const drawDust = (c: CanvasRenderingContext2D, b: Bounds) => {
+  for (const m of dust) {
+    if (m.x < b.x || m.y < b.y || m.x > b.x + b.w || m.y > b.y + b.h) continue;
+    const twinkle = 0.5 + 0.5 * Math.sin(frameTime / DUST.twinkleMs * Math.PI * 2 + m.phase);
+    c.fillStyle = `rgba(255, 240, 210, ${(DUST.brightness * twinkle).toFixed(3)})`;
+    c.fillRect(Math.round(m.x), Math.round(m.y), DUST.size, DUST.size); // whole pixels, like the art
+  }
+}

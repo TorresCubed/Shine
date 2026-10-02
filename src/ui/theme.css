@@ -1,0 +1,25 @@
+:root {
+  --gold: #f5c542;
+  --gold-dim: #b8913a;
+  --text: #e8e0d0;
+  --muted: #9a8f80;
+  --panel: rgba(14, 11, 9, 0.95);
+  --line: rgba(245, 197, 66, 0.25);
+  --display: 'Cinzel', 'Times New Roman', serif;
+  --body: 'EB Garamond', Georgia, serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: black;
+}
+
+/* Taps are game input: no double-tap zoom, scrolling or text selection. */
+#game {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

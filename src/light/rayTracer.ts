@@ -1,6 +1,6 @@
-import type { Point, Scene } from "./interfaces";
-import { SCENE_STRIDE } from "./interfaces";
-import { LIGHT, FLASHLIGHT, RAYS } from "./consts";
+import type { Point, Scene } from "../core/types";
+import { SCENE_STRIDE } from "../core/types";
+import { LIGHT, FLASHLIGHT, RAYS } from "../core/consts";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
 // angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.

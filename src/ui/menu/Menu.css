@@ -1,0 +1,106 @@
+.menu-overlay {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.85) 75%);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing: border-box;
+  color: var(--text); font: 19px/1.45 var(--body);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  animation: menu-in 300ms ease-out;
+}
+@keyframes menu-in { from { opacity: 0; } }
+
+.menu-panel {
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto;
+  box-sizing: border-box; padding: 28px 28px 24px; text-align: center;
+}
+.menu-overlay:not([data-screen="title"]):not([data-screen="ending"]) .menu-panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+
+/* Title screen: floats over the splash candle, a little high. */
+.menu-overlay[data-screen="title"] { background: transparent; }
+.menu-overlay[data-screen="title"] .menu-panel { margin-bottom: 12vh; }
+.menu-overlay[data-screen="title"] .byline { color: whitesmoke; font-weight: 500; }
+
+.game-title {
+  font: 700 clamp(56px, 14vw, 104px)/1 var(--display); letter-spacing: 0.08em; margin: 0 0 6px;
+  color: var(--gold);
+  text-shadow: 0 0 18px rgba(245, 197, 66, 0.55), 0 0 60px rgba(255, 150, 40, 0.35);
+  animation: flicker 4s infinite;
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; } 42% { opacity: 0.93; } 44% { opacity: 1; } 71% { opacity: 0.96; } 73% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .game-title { animation: none; } }
+
+.menu-panel h2 { font: 500 30px var(--display); letter-spacing: 0.06em; color: var(--gold); margin: 0 0 10px; }
+.tagline { font-style: italic; color: var(--text); margin: 0 0 28px; }
+.byline { color: var(--muted); margin: 28px 0 0; font-size: 16px; }
+.muted { color: var(--muted); margin: 0 0 16px; }
+
+.menu-list { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.menu-row { display: flex; justify-content: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+.menu-item {
+  min-width: 240px; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+  font: 19px var(--body); color: var(--text);
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: border-color 120ms, color 120ms, background 120ms;
+}
+.menu-item:hover, .menu-item:focus-visible { border-color: var(--gold); color: var(--gold); outline: none; background: rgba(245, 197, 66, 0.08); }
+.menu-item.primary { border-color: var(--gold-dim); color: var(--gold); }
+.menu-item.quiet { min-width: 0; color: var(--muted); }
+.menu-back { min-width: 140px; margin-top: 18px; }
+.menu-row .menu-back { margin-top: 0; }
+
+/* Hovered options (not on the title) get the game's flashlight to their left, shining a 10° beam across. */
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item { position: relative; }
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item::before,
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item::after {
+  content: ''; position: absolute; top: 50%; pointer-events: none;
+  opacity: 0; transition: opacity 160ms ease;
+}
+/* The flashlight: its 32 x 18 crop of the 64px art. */
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item::before {
+  left: -50px; width: 32px; height: 18px; margin-top: -9px; z-index: 1;
+  background: url("../../assets/interactive/droppedFlashlight.png") -13px -20px / 64px 64px no-repeat;
+  image-rendering: pixelated;
+}
+/* The beam: lens-high, spreading 10° (padding % is of width), fading like the game's light. */
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item::after {
+  left: -19px; width: calc((100% + 19px) * 0.9); height: 18px; padding-top: 15.75%; transform: translateY(-50%);
+  clip-path: polygon(0 calc(50% - 9px), 100% 0, 100% 100%, 0 calc(50% + 9px));
+  background: radial-gradient(ellipse 100% 100% at 0 50%,
+    rgba(255, 240, 190, 0.48), rgba(255, 225, 160, 0.432) 40%, rgba(255, 205, 130, 0) 100%);
+  mix-blend-mode: screen;
+}
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::before,
+.menu-overlay:not([data-screen="title"]) .menu-list .menu-item:is(:hover, :focus-visible)::after { opacity: 1; }
+
+.level-grid { margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.level-tile {
+  position: relative; min-width: 0; aspect-ratio: 1; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.level-number { font: 700 22px var(--display); color: var(--gold-dim); }
+.level-check { position: absolute; top: 3px; right: 6px; color: #7cc47a; font-size: 13px; }
+.level-tile.done .level-number { color: var(--gold); }
+/* Never played: fogged until hovered. */
+.level-tile.unplayed { background: rgba(255, 255, 255, 0.015); border-color: rgba(255, 255, 255, 0.06); }
+.level-tile.unplayed .level-number { color: #4a4a4a; transition: color 160ms; }
+.level-tile.unplayed:is(:hover, :focus-visible) .level-number { color: var(--gold-dim); }
+
+.rules { text-align: left; margin-bottom: 14px; }
+.rules p { margin: 0 0 8px; }
+.controls { width: 100%; border-collapse: collapse; font-size: 16px; text-align: left; }
+.controls th { font: 500 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-dim); padding: 4px 6px; }
+.controls td { padding: 5px 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.controls .key { color: var(--gold); white-space: nowrap; }
+
+.credits { margin: 8px 0 14px; }
+.credits dt { font: 500 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-dim); margin-top: 10px; }
+.credits dd { margin: 2px 0 0; }
+.links { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; margin: 6px 0 4px; }
+.links a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--line); }
+.links a:hover { border-color: var(--gold); }

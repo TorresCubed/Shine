@@ -1,11 +1,11 @@
-import { GRID_SIZE, PLAYER, LIGHT, MIRROR, DOOR, INPUT } from "./consts";
-import { player, levelWalls, keysDown, stick, gameState, goal, lightState, doors, mirrors, levers, footprintCells, doorLeaves, allDoorLeaves, punch, shine } from "./state";
-import type { LeverState, MirrorState } from "./state";
-import { brightnessAt } from "./rayTracer";
-import { tryOpenLockedDoor } from "./doorLogic";
-import type { LightGroup } from "./rayTracer";
-import type { FloorLight, GridPos, LightKind, Point } from "./interfaces";
-import { cellCenter, sameCell, segmentNearSquare, segmentsCross } from "./util";
+import { GRID_SIZE, PLAYER, LIGHT, MIRROR, DOOR, INPUT } from "../core/consts";
+import { player, levelWalls, keysDown, stick, gameState, goal, lightState, doors, mirrors, levers, footprintCells, doorLeaves, allDoorLeaves, punch, shine } from "../core/state";
+import type { LeverState, MirrorState } from "../core/state";
+import { brightnessAt } from "../light/rayTracer";
+import { tryOpenLockedDoor } from "./doors";
+import type { LightGroup } from "../light/rayTracer";
+import type { FloorLight, GridPos, LightKind, Point } from "../core/types";
+import { cellCenter, sameCell, segmentNearSquare, segmentsCross } from "../core/util";
 
 // Walls block whole cells.
 const inWall = (p: Point) => levelWalls.some(w => p.x > w.x && p.x < w.x + w.w && p.y > w.y && p.y < w.y + w.h);

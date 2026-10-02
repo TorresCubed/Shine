@@ -1,6 +1,6 @@
-import { MIRROR_CHARS } from "../levels";
-import type { LevelOptions, Side, DoorSpec } from "../levels";
-import type { LightKind } from "../interfaces";
+import { MIRROR_CHARS } from "../content/levels";
+import type { LevelOptions, Side, DoorSpec } from "../content/levels";
+import type { LightKind } from "../core/types";
 
 // The editor's model of a level, and conversion to and from the text maps and options in levels.ts.
 

@@ -1,0 +1,11 @@
+.level-card {
+  position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top) + 18px);
+  display: flex; flex-direction: column; gap: 2px; max-width: calc(100vw - 140px);
+  color: var(--text); text-align: center;
+  pointer-events: none; opacity: 0; transition: opacity 600ms ease;
+}
+.level-card.shown { opacity: 1; }
+.card-title { font: 500 26px var(--display); letter-spacing: 0.05em; color: var(--gold); text-shadow: 0 0 14px rgba(0, 0, 0, 0.9); }
+/* Narrow screens: below the HUD rather than across it. */
+@media (max-width: 520px) { .level-card { top: calc(env(safe-area-inset-top) + 88px); } }

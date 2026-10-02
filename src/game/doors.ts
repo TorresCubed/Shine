@@ -1,10 +1,10 @@
-import type { LightGroup } from "./rayTracer";
-import type { Point } from "./interfaces";
-import { brightnessAt, insideAny } from "./rayTracer";
-import { LIGHT, DOOR, PLATE } from "./consts";
-import { doors, levers, player, footprintCells, doorLeaves } from "./state";
-import type { DoorState } from "./state";
-import { cellCenter, sameCell } from "./util";
+import type { LightGroup } from "../light/rayTracer";
+import type { Point } from "../core/types";
+import { brightnessAt, insideAny } from "../light/rayTracer";
+import { LIGHT, DOOR, PLATE } from "../core/consts";
+import { doors, levers, player, footprintCells, doorLeaves } from "../core/state";
+import type { DoorState } from "../core/state";
+import { cellCenter, sameCell } from "../core/util";
 
 // The player sees the door if it's lit and in line of sight: just off either face of an edge it
 // closes, or halfway along a leaf where it is now.
