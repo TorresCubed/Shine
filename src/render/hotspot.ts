@@ -1,6 +1,7 @@
 import type { LightGroup } from "../light/rayTracer";
 import { GRID_SIZE, FLASHLIGHT } from "../core/consts";
 import { levelWalls } from "../core/state";
+import { insideWalls } from "../core/util";
 import { wallArt, wallMask } from "./walls";
 
 // Where a direct flashlight beam's centre line hits a wall: the point, how far it is, the wall
@@ -18,19 +19,16 @@ const beamWallHit = (group: LightGroup) => {
       if (t <= 0 || u < 0 || u > 1) continue;
       const len = Math.hypot(ex, ey) || 1;
       const hit = { x: o.x + dx * t, y: o.y + dy * t, dist: t, faceAngle: Math.atan2(ey, ex), cos: Math.abs(dx * -ey + dy * ex) / len };
-      const inside = { x: hit.x + dx * 2, y: hit.y + dy * 2 };
-      return levelWalls.some(w => inside.x > w.x && inside.x < w.x + w.w && inside.y > w.y && inside.y < w.y + w.h) ? hit : null;
+      return insideWalls({ x: hit.x + dx * 2, y: hit.y + dy * 2 }, levelWalls) ? hit : null;
     }
   }
   return null;
 }
 
-// Where the beam's centre hits a wall, the wall itself shows through in a soft spot: the wall's own
-// art faded in, and close up also glowing (HOTSPOT_GLOW, into the glow map, fading fast with distance,
-// so it's a flashlight pressed to a wall that blazes). The spot is the
-// beam's footprint (at least HOTSPOT_MIN_RADIUS, since close up the beam is only a few px across),
-// stretched along the wall at a slant as a real beam's spot is (up to HOTSPOT_MAX_STRETCH), and fades
-// with distance. Clipped to the level's walls, so it never lights the floor you walk on.
+// Where the beam's centre hits a wall, the wall's art shows through in a soft spot, glowing close up
+// (HOTSPOT_GLOW, fading fast with distance). The spot is the beam's footprint (at least
+// HOTSPOT_MIN_RADIUS), stretched along the wall at a slant (up to HOTSPOT_MAX_STRETCH), fading with
+// distance, and trimmed to the walls so it never lights the floor.
 const HOTSPOT_MIN_RADIUS = 0.4 * GRID_SIZE;
 const HOTSPOT_BRIGHTNESS = 0.6; // how much of the wall shows at the spot's centre, close up
 const HOTSPOT_GLOW = 0.8;

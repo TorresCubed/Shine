@@ -1,4 +1,6 @@
-import type { Point } from "../core/types";
+import type { Point, Segment } from "../core/types";
+import { DOOR } from "../core/consts";
+import { normalOf } from "../core/util";
 
 // A rectangle of the world canvas, in world px.
 export type Bounds = { x: number; y: number; w: number; h: number };
@@ -19,6 +21,12 @@ export const copyRect = (to: CanvasRenderingContext2D, from: HTMLCanvasElement, 
 // Twice the signed area: its sign is the polygon's winding direction.
 export const signedArea = (poly: Point[]) =>
   poly.reduce((sum, p, i) => { const q = poly[(i + 1) % poly.length]; return sum + p.x * q.y - q.x * p.y; }, 0);
+
+// A door leaf as a quad, DOOR.artWidth wide.
+export const leafQuad = (s: Segment): Point[] => {
+  const n = normalOf(s, DOOR.artWidth / 2);
+  return [{ x: s.x1 + n.x, y: s.y1 + n.y }, { x: s.x2 + n.x, y: s.y2 + n.y }, { x: s.x2 - n.x, y: s.y2 - n.y }, { x: s.x1 - n.x, y: s.y1 - n.y }];
+}
 
 // All wound the same way, so where quads overlap (at a corner, a door against a wall) they don't
 // cancel into a hole under the nonzero rule.

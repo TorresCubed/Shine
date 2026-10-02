@@ -1,13 +1,12 @@
 import type { Level } from "../core/types";
-import { GRID_SIZE, PLAYER, LIGHT } from "../core/consts";
-import { brightnessAt } from "../light/rayTracer";
+import { GRID_SIZE } from "../core/consts";
+import { fearLit } from "../light/rayTracer";
+import { cellCenter, insideWalls } from "../core/util";
 import { traceLevel } from "./preview";
 
-// Every way to win a flashlight-only level: set the turnable (and lever-turned) mirrors, drop the
-// flashlight on some floor cell (never a plate, mirror or lever) with some aim, then walk from there to the exit
-// empty-handed, only through cells the fear rule allows, with the doors its light opens. Cell by
-// cell, so it's a close guide rather than an exact replay: it doesn't know mirrors block your walk,
-// or where the flashlight has to be fetched from.
+// Every way to win a flashlight-only level: each setting of the movable mirrors, drop cell and aim,
+// then a walk to the exit through cells the fear rule allows. Cell by cell, so it's a close guide, not
+// an exact replay (it doesn't know mirror pivots block you).
 
 export type Solution = { steps: Record<string, number>; x: number; y: number; aims: number[] };
 
@@ -23,10 +22,7 @@ export const solverLimits = (level: Level) => {
 }
 
 export const solve = async (level: Level, onProgress: (done: number, total: number) => void, cancelled: () => boolean) => {
-  const wallAt = (x: number, y: number) => {
-    const cx = (x + 0.5) * GRID_SIZE, cy = (y + 0.5) * GRID_SIZE;
-    return level.walls.some(w => cx > w.x && cx < w.x + w.w && cy > w.y && cy < w.y + w.h);
-  };
+  const wallAt = (x: number, y: number) => insideWalls(cellCenter({ gridX: x, gridY: y }), level.walls);
   // The door, if any, on the edge between two neighbouring cells.
   const doorBetween = (ax: number, ay: number, bx: number, by: number) => level.doors.findIndex(d => d.leaves.some(l =>
     (l.into.gridX === ax && l.into.gridY === ay && l.from.gridX === bx && l.from.gridY === by) ||
@@ -37,7 +33,7 @@ export const solve = async (level: Level, onProgress: (done: number, total: numb
 
   const drops: [number, number][] = [];
   for (let y = 0; y < level.height; y++) for (let x = 0; x < level.width; x++) {
-    if (!wallAt(x, y) && !isPlate(x, y) && !isMirror(x, y) && !isLever(x, y) &&!(x === level.goal.gridX && y === level.goal.gridY)) drops.push([x, y]);
+    if (!wallAt(x, y) && !isPlate(x, y) && !isMirror(x, y) && !isLever(x, y) && !(x === level.goal.gridX && y === level.goal.gridY)) drops.push([x, y]);
   }
   const movable = level.mirrors.filter(m => m.control !== 'fixed').map(m => `${m.gridX},${m.gridY}`);
   const combos = movable.reduce<Record<string, number>[]>((acc, k) => acc.flatMap(a => [0, 1, 2, 3, 4, 5, 6, 7].map(s => ({ ...a, [k]: s }))), [{}]);
@@ -66,10 +62,7 @@ export const solve = async (level: Level, onProgress: (done: number, total: numb
           if (!t.fearLit(nx, ny)) continue;
           if (dx && dy) {
             if (wallAt(nx, cy) || wallAt(cx, ny)) continue;
-            const corner = { x: (cx + 0.5 + dx / 2) * GRID_SIZE, y: (cy + 0.5 + dy / 2) * GRID_SIZE };
-            const lit = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([px, py]) =>
-              brightnessAt({ x: corner.x + px * PLAYER.fearReach, y: corner.y + py * PLAYER.fearReach }, t.groups) >= LIGHT.litThreshold);
-            if (!lit) continue;
+            if (!fearLit({ x: (cx + 0.5 + dx / 2) * GRID_SIZE, y: (cy + 0.5 + dy / 2) * GRID_SIZE }, t.groups)) continue;
           }
           if (nx === level.goal.gridX && ny === level.goal.gridY) { won = true; break; }
           seen.add(`${nx},${ny}`);

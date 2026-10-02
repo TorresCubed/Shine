@@ -1,13 +1,9 @@
 import { canvas, ctx, pixelRatio } from "./canvases";
 import { viewMode } from "./frame";
 
-// Profiling (?perf): how long each part of a frame takes on the CPU, averaged over PERF_FRAMES
-// frames, shown under the fps and kept in document.body.dataset.perf. The GPU's share can't be timed
-// from here (reading pixels back to force it makes Chrome move the canvas off the GPU, which is far
-// slower), so ?skip=a,b turns parts of the drawing off instead: compare fps with each off. Parts:
-// fog (the remembered layer), memory (writing it), lit (lit regions), floor (a lit region's floor,
-// marks and tint), faces (lit wall and door faces), soft (soft shadow edges), sight (cutting light to line of sight), objects
-// (lights on the floor, the player, shines), screen (the world onto the screen).
+// ?perf: CPU time per part of a frame, averaged over PERF_FRAMES, shown under the fps. The GPU can't be
+// timed from here (reading pixels back moves Chrome's canvas off the GPU), so ?skip=a,b turns parts
+// off to compare fps instead: fog, memory, lit, floor, faces, soft, sight, objects, screen.
 const params = new URLSearchParams(location.search);
 const perfParam = params.get('perf');
 export const skip = new Set((params.get('skip') ?? '').split(',').filter(Boolean));

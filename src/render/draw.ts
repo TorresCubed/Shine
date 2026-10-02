@@ -94,13 +94,9 @@ export const draw = (now: number) => {
     copyRect(worldCtx, litLayer, litBounds);
     worldCtx.globalAlpha = 1;
   } else {
-    // Remembered floor: dim floor x fog memory (upscaled, which softens its edges), plus the base
-    // darkness added on top (a max would erase the faint end of the fade).
-    // The dim floor is drawn at FOG.floorBrightness; scaling it by this takes it (and everything
-    // remembered on it) to FOG.visibility. At 0 there's no fog floor: everything else you've seen
-    // (wall edges, plates, levers, mirrors, doors...) stays remembered as usual, and the floorboards
-    // show only while lit and in sight. (The playtest
-    // fog view, there to show the whole level, always draws the fog floor.)
+    // Remembered floor: the dim floor (scaled to FOG.visibility; at 0, just what's on it) times the fog
+    // memory (upscaled, softening its edges), plus the base darkness added on top. The playtest's fog
+    // view always shows the fog floor.
     const fog = viewMode === 'fog' ? FOG.floorBrightness : FOG.visibility;
     ensureDimFloor();
     // (Only the part on screen: the rest of the world canvas is never shown.)

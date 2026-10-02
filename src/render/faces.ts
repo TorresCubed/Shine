@@ -4,26 +4,16 @@ import type { Point, Segment } from "../core/types";
 import { GRID_SIZE, LIT_SURFACES, DOOR } from "../core/consts";
 import { doors, doorLeaves } from "../core/state";
 import type { DoorState } from "../core/state";
-import { quadsPath } from "./geometry";
+import { leafQuad, quadsPath } from "./geometry";
 import { isWallCell } from "./walls";
 
-// Lit wall faces, shaded by how squarely the light hits them (a face lit head-on is brighter than one
-// it grazes) and, for a flashlight, by the beam's profile (brightest along its centre line, fading
-// to its edges), from 55% up to the paint's own brightness. The brightest faces then glow: a copy of
-// the paint added on top (`glow` of it, at full brightness), which brightens the wall while keeping
-// its texture, rather than washing it out to white. Distance is handled by the caller's falloff.
-// Edges are sorted into a few brightness bands so it's a handful of strokes, not one per edge.
+// A light's lit faces: the edges of its outline that lie against a wall or door (its midpoint, nudged
+// square to the edge away from the light, is in a wall cell or on a leaf), each as a thin quad
+// reaching LIT_SURFACES.wallPenetration into the solid, so no clipping is needed (clipping the whole
+// outline to the walls was most of a phone's frame). They're sorted into FACE_BANDS by how squarely
+// the light hits them and, for a beam, its profile, so each band is one fill.
+// A door leaf is too thin for a band: one the light touches anywhere is lit whole, at its brightest band.
 const FACE_BANDS = 6;
-// A light's lit faces: the edges of its outline that lie against a wall or a door, each drawn as a
-// thin quad reaching LIT_SURFACES.wallPenetration into it, square to the edge on the side away from the
-// light, so the band stays inside the solid with no clipping. Most of a light's outline is where it runs out of range,
-// or along a mirror; only the edges against a face are drawn (stroking the whole outline and
-// clipping it to the walls was most of a frame's GPU time on a phone). An edge is against a face if
-// its midpoint, nudged a little that way, is in a wall cell or on a door leaf. (Square to the edge,
-// not along the light's direction: a wall lit at a grazing angle would be missed that way.) The
-// quads are sorted into FACE_BANDS by how brightly they light it.
-// A door leaf is too thin for a band (and traced as its centre line, so light stops halfway through
-// it): a leaf the light touches anywhere is lit whole, as brightly as the light hits it most squarely.
 type FaceBands = Point[][][]; // [band][quad] = its 4 corners
 type Leaf = { door: DoorState; s: Segment };
 const FACE_PROBE = 2; // px
@@ -65,11 +55,7 @@ export const litFaces = (group: LightGroup): FaceBands => {
       bands[band].push([a, b, { x: b.x + nx * d, y: b.y + ny * d }, { x: a.x + nx * d, y: a.y + ny * d }]);
     }
   }
-  for (const [{ s }, band] of litLeaves) {
-    const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1, h = DOOR.artWidth / 2;
-    const nx = -(s.y2 - s.y1) / len * h, ny = (s.x2 - s.x1) / len * h;
-    bands[band].push([{ x: s.x1 + nx, y: s.y1 + ny }, { x: s.x2 + nx, y: s.y2 + ny }, { x: s.x2 - nx, y: s.y2 - ny }, { x: s.x1 - nx, y: s.y1 - ny }]);
-  }
+  for (const [{ s }, band] of litLeaves) bands[band].push(leafQuad(s));
   return bands;
 }
 // A light's lit faces, worked out once a frame (the light map and fog memory both use them). Each

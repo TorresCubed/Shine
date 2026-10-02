@@ -1,16 +1,15 @@
-import { cellCenter } from "../core/util";
+import { cellCenter, insideWalls } from "../core/util";
 import type { Wall } from "../core/types";
-import { GRID_SIZE, FOG } from "../core/consts";
+import { GRID_SIZE } from "../core/consts";
 import { levelWalls } from "../core/state";
 import { worldCanvas } from "./canvases";
+import { wallImage, dimCopy } from "./art";
 
 // Walls are autotiled from walls.png: every wall cell gets the tile's middle, and only the sides that
 // face floor get its rim, so neighbouring wall cells join into one solid wall. Corners are the tile's
 // own outer corner, a continuing edge, or an inner corner (the rim bent round, where only the
 // diagonal is floor). Baked once per level into wallArt, with a grayed, darkened copy for fog memory.
 const WALL_RIM = 4; // how deep the rim is in walls.png, in its pixels
-let wallImage: HTMLImageElement;
-export const setWallImage = (img: HTMLImageElement) => { wallImage = img; };
 export const wallArt = document.createElement('canvas');
 export const dimWallArt = document.createElement('canvas');
 // The walls as a solid mask (opaque in walls, clear elsewhere), for trimming lit wall faces to them,
@@ -31,8 +30,7 @@ export const ensureWallArt = () => {
   const cols = worldCanvas.width / GRID_SIZE, rows = worldCanvas.height / GRID_SIZE;
   const isWall = (gx: number, gy: number) => {
     if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) return true; // no rim facing out of the level
-    const { x, y } = cellCenter({ gridX: gx, gridY: gy });
-    return levelWalls.some(w => x > w.x && x < w.x + w.w && y > w.y && y < w.y + w.h);
+    return insideWalls(cellCenter({ gridX: gx, gridY: gy }), levelWalls);
   }
 
   wallArt.width = dimWallArt.width = wallMask.width = worldCanvas.width;
@@ -80,7 +78,5 @@ export const ensureWallArt = () => {
     }
   }
 
-  const d = dimWallArt.getContext('2d')!;
-  d.filter = `grayscale(1) brightness(${FOG.floorBrightness})`;
-  d.drawImage(wallArt, 0, 0);
+  dimCopy(wallArt, dimWallArt);
 }

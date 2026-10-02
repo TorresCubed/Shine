@@ -1,6 +1,7 @@
 import type { Point, Scene } from "../core/types";
 import { SCENE_STRIDE } from "../core/types";
-import { LIGHT, FLASHLIGHT, RAYS } from "../core/consts";
+import { LIGHT, FLASHLIGHT, RAYS, PLAYER } from "../core/consts";
+import { wrapAngle } from "../core/util";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
 // angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.
@@ -12,8 +13,7 @@ import { LIGHT, FLASHLIGHT, RAYS } from "../core/consts";
 const LEG_STRIDE = 6; // fromX, fromY, toX, toY, virtualX, virtualY
 const HIT_EPSILON = 1e-6;
 
-// One traced ray. Everything lives in preallocated typed arrays and the objects are pooled across
-// frames, so the per-frame trace allocates nothing (apart from the output polygons).
+// One traced ray, in typed arrays pooled across frames, so tracing allocates nothing but the output polygons.
 class RayPath {
   angle = 0;
   legCount = 0;
@@ -69,8 +69,7 @@ export const fadeProfile = (t: number, core: number) => {
 export const fadeAt = (p: Point, g: LightGroup) => {
   let k = 1;
   for (const f of g.fades ?? []) {
-    const off = Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - f.axis;
-    k *= fadeProfile(Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) / f.half, f.core);
+    k *= fadeProfile(Math.abs(wrapAngle(Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - f.axis)) / f.half, f.core);
   }
   return k;
 }
@@ -276,8 +275,7 @@ export const castLight = (
     const axis = Math.atan2(sy, sx);
     let half = 0;
     for (const poly of g.polys) for (const p of poly) {
-      const off = Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - axis;
-      half = Math.max(half, Math.abs(Math.atan2(Math.sin(off), Math.cos(off))));
+      half = Math.max(half, Math.abs(wrapAngle(Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - axis)));
     }
     if (half > 1e-6) (g.fades ??= []).push({ axis, half, core: FLASHLIGHT.beamCore });
   }
@@ -288,22 +286,29 @@ export const castLight = (
   return { groups: result, rayCount: rays.length };
 }
 
-// How far from `from` toward `to` you get before hitting any segment (or all the way).
-export const clearDistance = (scene: Scene, from: Point, to: Point) => {
-  const c = scene.coords;
-  const dx = to.x - from.x, dy = to.y - from.y;
-  let best = 1;
-  for (let s = 0; s < scene.count; s++) {
-    const o = s * SCENE_STRIDE;
+// How many (dx, dy)s from (x, y) to the first segment hit, up to `max`: against every segment, or
+// only those culled for the light being cast (`nearby`).
+const hitDistance = (scene: Scene, x: number, y: number, dx: number, dy: number, max: number, nearby: boolean) => {
+  const c = scene.coords, n = nearby ? activeCount : scene.count;
+  let best = max;
+  for (let i = 0; i < n; i++) {
+    const o = (nearby ? activeSegs[i] : i) * SCENE_STRIDE;
     const ex = c[o + 2] - c[o], ey = c[o + 3] - c[o + 1];
     const denom = dx * ey - dy * ex;
     if (denom > -1e-12 && denom < 1e-12) continue;
-    const wx = c[o] - from.x, wy = c[o + 1] - from.y;
+    const wx = c[o] - x, wy = c[o + 1] - y;
     const t = (wx * ey - wy * ex) / denom;
+    if (t < 0 || t >= best) continue;
     const u = (wx * dy - wy * dx) / denom;
-    if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
+    if (u >= 0 && u <= 1) best = t;
   }
-  return best * Math.hypot(dx, dy);
+  return best;
+}
+
+// How far from `from` toward `to` you get before hitting any segment (or all the way).
+export const clearDistance = (scene: Scene, from: Point, to: Point) => {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  return hitDistance(scene, from.x, from.y, dx, dy, 1, false) * Math.hypot(dx, dy);
 }
 
 // Brightness at `t` = distance / radius, from LIGHT.falloffStops.
@@ -342,12 +347,16 @@ export const brightnessAt = (p: Point, groups: LightGroup[]) => {
   return total;
 }
 
-// Spill off a mirror: light scattering off the edges of what a mirror reflects, as a flashlight's
-// beam spills past its edge. Just past each side of the reflection (as seen from its virtual source)
-// the light carries on, dim (FLASHLIGHT.spill.strength), fading out over the same extra width a
-// flashlight's spill adds to its beam, and shadowed by whatever it meets (it doesn't bounce again).
-// It starts on the mirror's line just past its end, so it only spills where the mirror stops, not
-// into a shadow cast across the mirror.
+// The fear rule: empty-handed, you can only walk to `p` if some point within PLAYER.fearReach of it is
+// lit to LIGHT.litThreshold.
+const FEAR_PROBES = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+export const fearLit = (p: Point, groups: LightGroup[]) => FEAR_PROBES.some(([dx, dy]) =>
+  brightnessAt({ x: p.x + dx * PLAYER.fearReach, y: p.y + dy * PLAYER.fearReach }, groups) >= LIGHT.litThreshold);
+
+// Spill off a mirror: past each side of a reflection, the light carries on dim
+// (FLASHLIGHT.spill.strength), fading over the extra width a flashlight's spill adds to its beam,
+// shadowed but not bounced again. It starts on the mirror's line past its end, so it only spills
+// where the mirror stops.
 const MIRROR_SPILL_RAYS = 6; // per side
 const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
   const window = g.fades?.[g.fades.length - 1];
@@ -385,32 +394,12 @@ const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
   return spills;
 }
 
-// Soft shadows (only drawn: plates, walking and fog memory keep the hard edge). A real light isn't a
-// point, so past a corner its shadow's edge fades rather than cutting off: over the angle the light's
-// size (RAYS.softShadowSize) makes from the corner, so the fade is wider near the light and widens with
-// distance past the corner. A shadow's edge is where two neighbouring rays (a whisker apart, as
-// refining leaves them at an edge) end at very different distances: the nearer one on the corner,
-// the further one past it. From just past the corner, a fan of rays sweeps into the shadow, each
-// stopped by whatever it meets like any other light. Run from castLight straight after tracing, so
-// the fan's rays only test the segments in the light's reach (culled for it), not the whole level.
+// Soft shadows (drawn only: plates, walking and fog memory keep the hard edge). A real light isn't a
+// point, so past a corner its shadow's edge fades over the angle the light's size
+// (RAYS.softShadowSize) makes from the corner. A corner is where two neighbouring rays end at very
+// different distances; from just past it, a fan of rays sweeps into the shadow, each stopped by
+// whatever it meets. Run straight after tracing, so the fan only tests this light's culled segments.
 const SHADOW_EDGE_MAX_GAP = 0.25 * Math.PI / 180; // neighbouring rays further apart than this aren't at a corner
-// How far from `from` along unit (dx, dy) you get, up to `reach`, against the culled segments.
-const nearbyClearDistance = (scene: Scene, x: number, y: number, dx: number, dy: number, reach: number) => {
-  const c = scene.coords;
-  let best = reach;
-  for (let i = 0; i < activeCount; i++) {
-    const o = activeSegs[i] * SCENE_STRIDE;
-    const ex = c[o + 2] - c[o], ey = c[o + 3] - c[o + 1];
-    const denom = dx * ey - dy * ex;
-    if (denom > -1e-12 && denom < 1e-12) continue;
-    const wx = c[o] - x, wy = c[o + 1] - y;
-    const t = (wx * ey - wy * ex) / denom;
-    if (t < 0 || t >= best) continue;
-    const u = (wx * dy - wy * dx) / denom;
-    if (u >= 0 && u <= 1) best = t;
-  }
-  return best;
-}
 const addPenumbras = (g: LightGroup, scene: Scene) => {
   if (g.spill) return;
   const o = g.origin;
@@ -424,7 +413,7 @@ const addPenumbras = (g: LightGroup, scene: Scene) => {
       if (Math.abs(da - db) < RAYS.edgeMinJump) continue;
       const near = da < db ? a : b, far = da < db ? b : a, dNear = Math.min(da, db);
       const aNear = Math.atan2(near.y - o.y, near.x - o.x), aFar = Math.atan2(far.y - o.y, far.x - o.x);
-      const gap = Math.atan2(Math.sin(aNear - aFar), Math.cos(aNear - aFar));
+      const gap = wrapAngle(aNear - aFar);
       if (Math.abs(gap) > SHADOW_EDGE_MAX_GAP || dNear < 1) continue;
       // Pivot on the grazing ray just past the corner (the near ray's end is on the wall's face, so
       // a fan from there would start inside the wall), and turn toward the near side: the shadow.
@@ -435,7 +424,7 @@ const addPenumbras = (g: LightGroup, scene: Scene) => {
       const ends: Point[] = [];
       for (let j = 0; j <= RAYS.softShadowSteps; j++) {
         const angle = aFar + width * j / RAYS.softShadowSteps, dx = Math.cos(angle), dy = Math.sin(angle);
-        const d = nearbyClearDistance(scene, apex.x, apex.y, dx, dy, reach);
+        const d = hitDistance(scene, apex.x, apex.y, dx, dy, reach, true);
         ends.push({ x: apex.x + dx * d, y: apex.y + dy * d });
       }
       penumbras.push({ apex, ends });

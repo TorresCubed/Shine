@@ -1,17 +1,14 @@
-import { castLight, castFlashlight, brightnessAt } from "../light/rayTracer";
+import { castLight, castFlashlight, brightnessAt, fearLit } from "../light/rayTracer";
 import type { LightGroup } from "../light/rayTracer";
 import { getScene } from "../light/scene";
-import { cellCenter } from "../core/util";
-import { doorLeaves } from "../core/state";
-import type { MirrorState } from "../core/state";
+import { cellCenter, lampSource } from "../core/util";
+import { doorLeaves, mirrorState } from "../core/state";
 import type { Level, LightKind, Point } from "../core/types";
-import { GRID_SIZE, PLAYER, LIGHT, FLAME, FLASHLIGHT } from "../core/consts";
+import { GRID_SIZE, LIGHT, FLAME, FLASHLIGHT } from "../core/consts";
 
-// A level's light as it would be in the game, with the real ray tracer: its lamps,
-// candles standing on the floor, plus any lights put down to try things (a flashlight shining from
-// its handle end, as a dropped one does). Light doors open while their plate is lit, and so do locked
-// doors (they can be unlocked then); lever doors stay shut. Opening a door can let light through to
-// another plate, so it's traced again until nothing changes.
+// A level's light as the game would trace it: its lamps and candles, plus any lights put down to try
+// things. Light and locked doors open while their plate is lit (lever doors stay shut), and since an
+// open door can light another plate, it's traced again until nothing changes.
 
 export type TryLight = { kind: LightKind; x: number; y: number; aim: number }; // aim in degrees
 
@@ -24,10 +21,7 @@ export type Traced = {
 };
 
 export const traceLevel = (level: Level, lights: TryLight[], steps: Record<string, number> = {}): Traced => {
-  const mirrors = level.mirrors.map(m => {
-    const s = steps[`${m.gridX},${m.gridY}`] ?? m.step;
-    return { ...m, step: s, shownStep: s, turnLeft: 0, turnSpeed: 0, seenStep: s, everSeen: false } as MirrorState;
-  });
+  const mirrors = level.mirrors.map(m => mirrorState(m, steps[`${m.gridX},${m.gridY}`]));
   let open = level.doors.map(() => false);
   let groups: LightGroup[] = [];
   let plates: number[] = [];
@@ -35,10 +29,7 @@ export const traceLevel = (level: Level, lights: TryLight[], steps: Record<strin
     const scene = getScene(level.walls, mirrors, level.doors.flatMap((d, i) => doorLeaves(d, open[i] ? 1 : 0)));
     groups = [];
     const omni = (at: Point, radius: number) => groups.push(...castLight(at, 0, Math.PI * 2, FLAME.rayCount, radius, scene, LIGHT.maxMirrorBounces, true).groups);
-    for (const l of level.lamps) {
-      const c = cellCenter(l), out = GRID_SIZE / 2 - LIGHT.edgeGap;
-      omni({ x: c.x + l.toWallX * out, y: c.y + l.toWallY * out }, FLAME.lampRadius);
-    }
+    for (const l of level.lamps) omni(lampSource(l), FLAME.lampRadius);
     for (const d of level.startDropped) omni(d, FLAME.candleRadius);
     for (const l of lights) {
       const c = cellCenter({ gridX: l.x, gridY: l.y });
@@ -53,11 +44,7 @@ export const traceLevel = (level: Level, lights: TryLight[], steps: Record<strin
     open = next;
   }
   const at = (p: Point) => brightnessAt(p, groups);
-  const fearLit = (x: number, y: number) => {
-    if (lights.some(l => l.x === x && l.y === y)) return true; // a dropped light's cell always counts
-    const c = cellCenter({ gridX: x, gridY: y });
-    return [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) =>
-      at({ x: c.x + dx * PLAYER.fearReach, y: c.y + dy * PLAYER.fearReach }) >= LIGHT.litThreshold);
-  };
-  return { groups, open, plates, at, fearLit };
+  // A dropped light's cell always counts.
+  const walkable = (x: number, y: number) => lights.some(l => l.x === x && l.y === y) || fearLit(cellCenter({ gridX: x, gridY: y }), groups);
+  return { groups, open, plates, at, fearLit: walkable };
 }

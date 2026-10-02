@@ -2,20 +2,22 @@ import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, 
 import { GRID_SIZE, PLAYER } from "./consts";
 import { cellCenter, easeInOut } from "./util";
 
-// Mutable game state. `let` exports are live bindings: importers see the new values after
-// loadLevel reassigns them.
+// Mutable game state. The `let` exports are live bindings, reassigned by loadLevel.
 
 export const keysDown = new Set<string>();
 // The on-screen stick (input/touch.ts): how far it's pushed, each axis -1..1 and at most 1 long
 // (0, 0 when let go). `touch` turns on at the first touch, for touch-only controls and prompts.
 export const stick = { x: 0, y: 0 };
 export const input = { touch: false };
-// zoom: screen px per world px. fitted: still at the level's fit zoom (it re-fits if the screen
-// changes size). pan: how far (world px) a two-finger drag has moved the view off the player; it
-// drifts back once you walk. pinching: a two-finger gesture is under way. intro: a new level's
-// zoom-in from the overview is still to come (zooming yourself cancels it). glideMs: how long the next
-// zoom change takes to glide (null: CAMERA.zoomEaseMs).
-export const camera = { zoom: 1, fitted: true, panX: 0, panY: 0, pinching: false, intro: false, glideMs: null as number | null };
+export const camera = {
+  zoom: 1,          // screen px per world px
+  fitted: true,     // still at the level's fit zoom (re-fitted if the screen changes size)
+  panX: 0,          // world px a two-finger drag has moved the view off the player; drifts back as you walk
+  panY: 0,
+  pinching: false,  // a two-finger gesture is under way
+  intro: false,     // a new level's zoom-in is still to come (zooming yourself cancels it)
+  glideMs: null as number | null, // how long the next zoom change glides (null: CAMERA.zoomEaseMs)
+};
 
 export const player = {
   x: 0,     // centre, in px; moves freely
@@ -35,26 +37,32 @@ export const lightState: { held: LightKind | null; stowed: LightKind[]; dropped:
 // `startedAt` is on the performance.now() / requestAnimationFrame clock.
 export const gameState: { status: 'playing' | 'won'; startedAt: number } = { status: 'playing', startedAt: 0 };
 
-// Doors: openAmount 0 = shut, 1 = fully swung open. seenOpenAmount is how open it was the last time
-// the player saw it, which is what fog of war shows. triggerOn: its plate is lit, or its lever is
-// on. opened: a locked door the player has opened (it stays open). everSeen: the player has seen it
-// at some point. wasUnlocked: a locked door's state last frame (null before its first), and
-// lockFlashAt when it last changed (performance.now() clock), for the flash that shows it even in fog.
-// showWhole: this frame it's seen, or (seen before) it's doing something, so it's shown as it is,
-// all of it, even in fog (the renderer refreshes its memory). plateWake: how long its plate has been
-// waking, in ms, from 0 (dead) to PLATE.wakeMs (active), while triggerOn. Going dark it drops to 0
-// and winks out instead: winkAt when (performance.now() clock), winkFrom how awake it was (0-1).
+// Times are on the performance.now() clock.
 export type DoorState = Door & {
-  openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean;
-  everSeen: boolean; wasUnlocked: boolean | null; lockFlashAt: number; showWhole: boolean; plateWake: number; winkAt: number; winkFrom: number;
+  openAmount: number;          // 0 shut, 1 fully swung open
+  seenOpenAmount: number;      // as last seen: what fog shows
+  triggerOn: boolean;          // its plate is lit, or its lever on
+  opened: boolean;             // a locked door opened for good
+  everSeen: boolean;
+  wasUnlocked: boolean | null; // a locked door's state last frame (null before its first)
+  lockFlashAt: number;         // when it last unlocked or re-locked
+  showWhole: boolean;          // seen this frame, or seen before and doing something: shown as it is, even in fog
+  plateWake: number;           // ms its plate has been waking while lit, up to PLATE.wakeMs
+  winkAt: number;              // when its plate went dark
+  winkFrom: number;            // how awake it was then (0-1)
 };
-// Mirrors: `step` is where it's turning to; `shownStep` is where it actually is (fractional mid-turn),
-// which light, collision and drawing all use, with `turnLeft` steps still to go (always forward) at
-// `turnSpeed` steps a second.
-// seenStep is the orientation the player last saw it at, for fog of war. everSeen: the player has
-// seen it at some point, so they see it turn (all of it) whatever turns it, even in fog. turned: how
-// many steps it's turned since the level began, never wrapping (a wheel that turns it shows this).
-export type MirrorState = Mirror & { shownStep: number; turnLeft: number; turnSpeed: number; seenStep: number; everSeen: boolean; turned: number };
+export type MirrorState = Mirror & {
+  // `step` is where it's turning to.
+  shownStep: number;  // where it is (fractional mid-turn): what light, collision and drawing use
+  turnLeft: number;   // steps still to go (always forward)
+  turnSpeed: number;  // steps a second
+  seenStep: number;   // as last seen: what fog shows
+  everSeen: boolean;  // once seen, you see it turn whatever turns it, even in fog
+  turned: number;     // steps turned since the level began, never wrapping (a wheel shows this)
+};
+// A mirror's state at the start, set at `step`.
+export const mirrorState = (m: Mirror, step = m.step): MirrorState =>
+  ({ ...m, step, shownStep: step, turnLeft: 0, turnSpeed: 0, seenStep: step, everSeen: false, turned: 0 });
 // pulled: pulled since the renderer last showed it (all of it, even in fog).
 export type LeverState = Lever & { on: boolean; pulled: boolean };
 
@@ -104,7 +112,7 @@ export const loadLevel = (level: Level) => {
   doors = level.doors.map(d => ({
     ...d, openAmount: 0, seenOpenAmount: 0, triggerOn: false, opened: false, everSeen: false, wasUnlocked: null, lockFlashAt: -Infinity, showWhole: false, plateWake: 0, winkAt: -Infinity, winkFrom: 0,
   }));
-  mirrors = level.mirrors.map(m => ({ ...m, shownStep: m.step, turnLeft: 0, turnSpeed: 0, seenStep: m.step, everSeen: false, turned: 0 }));
+  mirrors = level.mirrors.map(m => mirrorState(m));
   levers = level.levers.map(l => ({ ...l, on: false, pulled: false }));
   lamps = level.lamps;
   start = level.start;

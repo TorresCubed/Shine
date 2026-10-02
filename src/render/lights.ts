@@ -1,4 +1,4 @@
-import { cellCenter } from "../core/util";
+import { lampSource } from "../core/util";
 import { castLight, castFlashlight, clearDistance } from "../light/rayTracer";
 import type { LightGroup } from "../light/rayTracer";
 import type { LightKind, Point, Scene } from "../core/types";
@@ -47,10 +47,7 @@ export const castLights = (scene: Scene, now: number) => {
     const back = fullBack && Math.max(0, Math.min(fullBack, clearDistance(scene, d, { x: d.x - cos * fullBack, y: d.y - sin * fullBack }) - 1));
     sources.push({ kind: d.kind, at: { x: d.x - cos * back, y: d.y - sin * back }, aim: d.aimAngle, radius: range(d.kind), seed: 100 + d.gridX * 31 + d.gridY * 17 });
   }
-  for (const l of lamps) {
-    const c = cellCenter(l), out = GRID_SIZE / 2 - LIGHT.edgeGap;
-    sources.push({ kind: 'candle', at: { x: c.x + l.toWallX * out, y: c.y + l.toWallY * out }, aim: 0, radius: FLAME.lampRadius, seed: 500 + l.gridX * 31 + l.gridY * 17 });
-  }
+  for (const l of lamps) sources.push({ kind: 'candle', at: lampSource(l), aim: 0, radius: FLAME.lampRadius, seed: 500 + l.gridX * 31 + l.gridY * 17 });
 
   const groups: LightGroup[] = [];
   let rayCount = 0;

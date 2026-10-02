@@ -1,4 +1,4 @@
-import { polygonsPath, cellCenter } from "../core/util";
+import { polygonsPath, cellCenter, normalOf } from "../core/util";
 import { insideAny, brightnessAt } from "../light/rayTracer";
 import type { LightGroup } from "../light/rayTracer";
 import type { GridPos, Point } from "../core/types";
@@ -22,11 +22,9 @@ const FOG_FADE_STOPS: [number, string][] = FOG_MEMORY_STOPS.map(([t, color]) => 
   return [t, `rgb(${v},${v},${v})`];
 });
 
-// Writes the light in the player's line of sight into fog memory, with the same falloff as the light
-// itself, so a spot is remembered only as well as it was seen. Brightness lives in the RGB of an
-// opaque canvas because 'lighten' is then an exact per-pixel max (alpha would accumulate instead).
-// (Into both memories: the one that keeps, and the one that fades, which is inverted, so there it's
-// an exact per-pixel min, 'darken', of the inverted falloff.)
+// Writes the light in line of sight into both memories, with the light's own falloff, so a spot is
+// remembered only as well as it was seen. Brightness is in an opaque canvas's RGB, so 'lighten' is an
+// exact per-pixel max ('darken', a min, in the inverted recent memory).
 const rememberLight = (groups: LightGroup[], view: Point[][]) => {
   for (const c of [exploredCtx, recentCtx]) {
     const inverted = c === recentCtx;
@@ -51,12 +49,9 @@ const rememberLight = (groups: LightGroup[], view: Point[][]) => {
   }
 }
 
-// Memory fades while out of sight: the recent memory drops steadily, from full to nothing in exactly
-// FOG.fadeS (whatever's in sight is written back at full each frame, so only what's out of sight
-// fades). The mask is 8-bit, and scaling it down (a 'multiply') rounds a dim spot's small drop away,
-// so it would never fade out; so the recent memory is kept inverted (white = forgotten), and fading
-// is adding ('lighter') whole steps as they add up, which is exact and stops at white. All on the
-// GPU: no reading pixels back.
+// The recent memory fades from full to nothing over FOG.fadeS (what's in sight is rewritten each
+// frame). Multiplying an 8-bit mask down rounds small drops away, so it's kept inverted (white =
+// forgotten) and fades by adding whole steps ('lighter'): exact, and all on the GPU.
 let fadeOwed = 0; // how much the memory should have dropped that hasn't yet (0-255 scale)
 export const fadeMemory = (dt: number) => {
   fadeOwed += 255 * dt / FOG.fadeS;
@@ -69,11 +64,9 @@ export const fadeMemory = (dt: number) => {
   recentCtx.globalCompositeOperation = 'source-over';
 }
 
-// Objects are remembered whole, not just the parts your light touched: when one is seen, or one
-// you've seen does something (a door swings, locks or unlocks; a mirror turns; a lever is pulled),
-// the memory under all of it is set back to full, so it shows complete and starts fading afresh.
-// Plates count as seen when their centre is lit and in sight, levers too (or when pulled).
-// `level` (0-1) is how well: full unless given.
+// Objects are remembered whole: when one is seen, or one you've seen does something (a door swings
+// or locks, a mirror turns, a lever is pulled), the memory under all of it is set to `level` (full
+// unless given), so it shows complete and starts fading afresh.
 const rememberWhole = (shape: (c: CanvasRenderingContext2D) => void, level = 1) => {
   const v = Math.round(255 * level);
   for (const c of [exploredCtx, recentCtx]) {
@@ -106,18 +99,16 @@ const rememberObjects = (groups: LightGroup[], view: Point[][]) => {
     }, level);
   }
 }
-// A door is remembered whole, but only as well as the floor beside it: the memory falloff
-// (FOG_MEMORY_STOPS) of the brightest light just off either face of its leaves. Out of light (a door
-// you've seen swinging in the dark), as well as when you last saw it. (Remembered at full, a dimly
-// lit door's fog copy showed through its light far brighter than the dim floor and walls around it.)
+// How well a door is remembered: as well as the floor beside it (the memory falloff of the brightest
+// light just off its leaves), or out of light, as well as when last lit. At full, a dimly lit door's
+// fog copy showed far brighter than the floor around it.
 const doorMemory = new WeakMap<DoorState, number>();
 const doorMemoryLevel = (door: DoorState, groups: LightGroup[]) => {
   let best = -1;
   for (const s of doorLeaves(door, door.openAmount)) {
-    const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1, off = DOOR.artWidth / 2 + 2;
-    const nx = -(s.y2 - s.y1) / len * off, ny = (s.x2 - s.x1) / len * off;
+    const n = normalOf(s, DOOR.artWidth / 2 + 2);
     for (const f of [0.1, 0.5, 0.9]) for (const side of [1, -1]) {
-      const p = { x: s.x1 + (s.x2 - s.x1) * f + nx * side, y: s.y1 + (s.y2 - s.y1) * f + ny * side };
+      const p = { x: s.x1 + (s.x2 - s.x1) * f + n.x * side, y: s.y1 + (s.y2 - s.y1) * f + n.y * side };
       for (const g of groups) {
         const dist = Math.hypot(p.x - g.origin.x, p.y - g.origin.y);
         if (dist >= g.radius || !insideAny(p, g.polys)) continue; // (out of reach first: it's cheap)

@@ -2,7 +2,7 @@ import { cellCenter } from "../core/util";
 import type { GridPos, Wall } from "../core/types";
 import { GRID_SIZE, ANIMATION, LIT_SURFACES, MIRROR } from "../core/consts";
 import { levelWalls, doors, doorLeaves, lamps, mirrors, levers, lightState, start, goal, punches } from "../core/state";
-import { worldCanvas } from "./canvases";
+import { worldCanvas, fitToWorld } from "./canvases";
 import { frameTime } from "./frame";
 import { drawObject, floorTile, dimFloorTile } from "./art";
 import { ensureWallArt, wallArt, dimWallArt } from "./walls";
@@ -84,11 +84,9 @@ const drawDoors = (c: CanvasRenderingContext2D, dim: boolean) => {
   }
 }
 
-// The remembered floor, cached until the level's layout or anything the player has seen changes.
-// Doors and mirrors are drawn as last seen, so fog never shows a change you didn't see.
-// The remembered level, as fog shows it: dimMarks is everything but the floorboards (markers,
-// plates, levers, lamps, pickups, mirrors, doors, walls) on transparent, which is all fog shows with
-// the fog floor off (FOG.visibility 0); dimFloor is the floorboards with that on top.
+// The remembered level, cached until its layout or anything seen changes (doors and mirrors as last
+// seen, so fog never shows a change you didn't see). dimMarks is everything but the floorboards, all
+// fog shows with the fog floor off (FOG.visibility 0); dimFloor is the floorboards with that on top.
 export const dimMarksCanvas = document.createElement('canvas');
 const dimMarksCtx = dimMarksCanvas.getContext('2d')!;
 export const dimFloorCanvas = document.createElement('canvas');
@@ -128,7 +126,7 @@ export const ensureLitArt = () => {
   litArtKey = key;
   litArtWalls = levelWalls;
   const c = litArtCtx, w = worldCanvas.width, h = worldCanvas.height;
-  if (litArt.width !== w || litArt.height !== h) { litArt.width = w; litArt.height = h; }
+  fitToWorld(litArt);
   c.globalCompositeOperation = 'source-over';
   c.fillStyle = c.createPattern(floorTile, 'repeat')!;
   c.fillRect(0, 0, w, h);

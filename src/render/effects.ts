@@ -1,29 +1,16 @@
-import type { Segment, Wall } from "../core/types";
-import { GRID_SIZE, DUST, DOOR } from "../core/consts";
+import type { Wall } from "../core/types";
+import { GRID_SIZE, DUST } from "../core/consts";
 import { levelWalls, doors, doorLeaves, shines } from "../core/state";
 import { pixelRatio, worldCanvas } from "./canvases";
 import { frameTime } from "./frame";
-import { signedArea } from "./geometry";
+import { leafQuad, quadsPath } from "./geometry";
 import type { Bounds } from "./geometry";
 import { screenView } from "./camera";
 
 // Game feel: drawing-only touches that make the world react (the light itself stays steady).
 
-// A door leaf as a filled quad, DOOR.artWidth wide (for a locked door's flash).
-const leafPath = (c: CanvasRenderingContext2D, s: Segment) => {
-  const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1;
-  const nx = -(s.y2 - s.y1) / len * DOOR.artWidth / 2, ny = (s.x2 - s.x1) / len * DOOR.artWidth / 2;
-  const q = [{ x: s.x1 + nx, y: s.y1 + ny }, { x: s.x2 + nx, y: s.y2 + ny }, { x: s.x2 - nx, y: s.y2 - ny }, { x: s.x1 - nx, y: s.y1 - ny }];
-  if (signedArea(q) < 0) q.reverse();
-  c.moveTo(q[0].x, q[0].y);
-  for (const p of q) c.lineTo(p.x, p.y);
-  c.closePath();
-}
-
-// When a locked door unlocks (or locks again) it flashes green (or red),
-// glowing up and fading back to how it looked, over LOCK_FLASH_MS. It shows even in fog, where
-// nothing else changes unseen, so you know your light reached its plate; but only once you've seen
-// the door, so it never gives away one you haven't found.
+// A locked door that unlocks (or locks again) flashes green (or red) over LOCK_FLASH_MS. It shows
+// even in fog, so you know your light reached its plate, but only for a door you've seen.
 const LOCK_FLASH_MS = 900;
 export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
   for (const door of doors) {
@@ -35,17 +22,15 @@ export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
     c.fillStyle = c.shadowColor = color;
     c.shadowBlur = 0.4 * GRID_SIZE;
     c.beginPath();
-    for (const s of doorLeaves(door, door.seenOpenAmount)) leafPath(c, s);
+    quadsPath(c, doorLeaves(door, door.seenOpenAmount).map(leafQuad));
     c.fill();
     c.restore();
   }
 }
 
-// A shine where a light was picked up or dropped: a warm glow that flares and fades, and a four-point
-// glint (long rays up/down/left/right, short diagonal ones) that grows, turns a little and shrinks
-// away, over SHINE_MS. Drawn on top of everything, added ('lighter') so it glows. Its size is in
-// cells, but never under SHINE_MIN_CSS_PX on screen, so it still reads zoomed out on a phone.
-// The candle's glow colour (the warm tint a lit region gets), shared with the shine so it matches.
+// A shine where a light was picked up or dropped: a warm glow and a four-point glint that flare and
+// fade over SHINE_MS, added on top of everything. Never under SHINE_MIN_CSS_PX on screen, so it
+// still reads zoomed out on a phone.
 const CANDLE_GLOW_RGB = '255, 220, 150';
 const SHINE_MS = 750;
 const SHINE_SIZE = 0.2;       // cells, the long rays' length at their longest
@@ -87,9 +72,8 @@ export const drawShines = (c: CanvasRenderingContext2D) => {
   c.restore();
 }
 
-// Dust: motes drifting slowly across the whole level, each wandering a little and slowly twinkling.
-// Drawn onto the lit area 'source-atop' (see draw), so dust only shows where there's light,
-// brightest near it. Scattered afresh for each new level.
+// Dust: motes drifting and twinkling across the level, drawn 'source-atop' the lit area (see draw)
+// so they only show in light. Scattered afresh for each new level.
 type Mote = { x: number; y: number; heading: number; speed: number; phase: number };
 let dust: Mote[] = [];
 let dustFor: Wall[] | null = null;

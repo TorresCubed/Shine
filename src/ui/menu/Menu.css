@@ -94,12 +94,21 @@
 .rules { text-align: left; margin-bottom: 14px; }
 .rules p { margin: 0 0 8px; }
 .controls { width: 100%; border-collapse: collapse; font-size: 16px; text-align: left; }
-.controls th { font: 500 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-dim); padding: 4px 6px; }
+.controls th { padding: 4px 6px; }
 .controls td { padding: 5px 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .controls .key { color: var(--gold); white-space: nowrap; }
 
+/* Small caps labels: credit roles and the controls table's headings. Lit from below, fading upward
+   like light, but only part way so the tops stay readable. */
+.credits dt, .controls th {
+  font: 700 14px var(--display); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--gold);
+  background: linear-gradient(to top, var(--gold) 25%, rgba(245, 197, 66, 0.55));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
 .credits { margin: 8px 0 14px; }
-.credits dt { font: 500 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-dim); margin-top: 10px; }
+.credits dt { margin-top: 10px; }
 .credits dd { margin: 2px 0 0; }
 .links { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; margin: 6px 0 4px; }
 .links a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--line); }

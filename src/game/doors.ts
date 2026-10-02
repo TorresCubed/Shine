@@ -4,17 +4,15 @@ import { brightnessAt, insideAny } from "../light/rayTracer";
 import { LIGHT, DOOR, PLATE } from "../core/consts";
 import { doors, levers, player, footprintCells, doorLeaves } from "../core/state";
 import type { DoorState } from "../core/state";
-import { cellCenter, sameCell } from "../core/util";
+import { cellCenter, normalOf, sameCell } from "../core/util";
 
 // The player sees the door if it's lit and in line of sight: just off either face of an edge it
 // closes, or halfway along a leaf where it is now.
 const isSeen = (door: DoorState, groups: LightGroup[], view: Point[][]) => {
   const closed = doorLeaves(door, 0), now = doorLeaves(door, door.openAmount);
   return closed.some((s, i) => {
-    const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2, len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
-    const nx = -(s.y2 - s.y1) / len * 4, ny = (s.x2 - s.x1) / len * 4;
-    const leaf = now[i];
-    const probes = [{ x: mx + nx, y: my + ny }, { x: mx - nx, y: my - ny }, { x: (leaf.x1 + leaf.x2) / 2, y: (leaf.y1 + leaf.y2) / 2 }];
+    const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2, n = normalOf(s, 4), leaf = now[i];
+    const probes = [{ x: mx + n.x, y: my + n.y }, { x: mx - n.x, y: my - n.y }, { x: (leaf.x1 + leaf.x2) / 2, y: (leaf.y1 + leaf.y2) / 2 }];
     return probes.some(p => insideAny(p, view) && brightnessAt(p, groups) > 0);
   });
 }

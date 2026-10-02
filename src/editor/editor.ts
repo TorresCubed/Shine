@@ -1,6 +1,7 @@
-import { levelSources, fromMap } from "../content/levels";
+import { levelSources, fromMap, STEP, lampSide } from "../content/levels";
 import type { Side } from "../content/levels";
 import { doorLeaves } from "../core/state";
+import { polygonsPath } from "../core/util";
 import type { Level, LightKind } from "../core/types";
 import type { LightGroup } from "../light/rayTracer";
 import { GRID_SIZE, LIGHT } from "../core/consts";
@@ -67,7 +68,6 @@ const levelKey = () => JSON.stringify(toSource(doc));
 // neighbour on `side`. A door placed there opens into `into`.
 type Edge = { into: [number, number]; from: [number, number]; opens: Side };
 const OPPOSITE: Record<Side, Side> = { up: 'down', down: 'up', left: 'right', right: 'left' };
-const STEP: Record<Side, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const edgeNear = (px: number, py: number): Edge | null => {
   const x = Math.floor(px / CS), y = Math.floor(py / CS), fx = px / CS - x, fy = py / CS - y;
   const sides: [Side, number][] = [['left', fx], ['right', 1 - fx], ['up', fy], ['down', 1 - fy]];
@@ -85,29 +85,30 @@ const sameEdge = (a: string, b: string) => {
 }
 const doorOnEdge = (edge: string) => Object.entries(doc.doors).find(([, d]) => d.edges.some(e => sameEdge(e, edge)));
 
-// Door tool: puts this pair's door on the edge (opening into the cell clicked), or takes it off.
+// Takes whatever door is on the edge off it. Returns that door's number, or null if there was none.
+const removeDoorEdge = (e: Edge) => {
+  const edge = edgeString(e.from, e.into), existing = doorOnEdge(edge);
+  if (!existing) return null;
+  const [ns, d] = existing, n = Number(ns);
+  d.edges = d.edges.filter(x => !sameEdge(x, edge));
+  if (!d.edges.length) { delete doc.doors[n]; if (selectedDoor === n) selectedDoor = null; }
+  return n;
+}
+
+// Door tool: puts this pair's door on the edge (opening into the cell clicked), or, clicked again, takes it off.
 const toggleDoorEdge = (e: Edge) => {
+  if (removeDoorEdge(e) === pair) { selectedDoor = doc.doors[pair] ? pair : null; return; }
   const edge = edgeString(e.from, e.into);
-  const existing = doorOnEdge(edge);
-  if (existing) {
-    const [n, d] = existing;
-    d.edges = d.edges.filter(x => !sameEdge(x, edge));
-    if (!d.edges.length) delete doc.doors[Number(n)];
-    if (Number(n) === pair) { selectedDoor = doc.doors[pair] ? pair : null; return; } // clicking it again takes it off
-  }
   if (doc.doors[pair]) doc.doors[pair].edges.push(edge);
   else doc.doors[pair] = { edges: [edge], opens: e.opens };
   selectedDoor = pair;
   selected = null;
 }
 
-const removeDoorEdge = (e: Edge) => {
-  const edge = edgeString(e.from, e.into), existing = doorOnEdge(edge);
-  if (!existing) return false;
-  const [n, d] = existing;
-  d.edges = d.edges.filter(x => !sameEdge(x, edge));
-  if (!d.edges.length) { delete doc.doors[Number(n)]; if (selectedDoor === Number(n)) selectedDoor = null; }
-  return true;
+// The line on screen along the edge between two neighbouring cells.
+const edgeLine = ([ax, ay]: number[], [bx, by]: number[]) => {
+  const ex = Math.max(ax, bx) * CS, ey = Math.max(ay, by) * CS;
+  return ax !== bx ? [ex, ay * CS, ex, (ay + 1) * CS] : [ax * CS, ey, (ax + 1) * CS, ey];
 }
 
 const inBounds = (x: number, y: number) => y >= 0 && y < doc.grid.length && x >= 0 && x < doc.grid[0].length;
@@ -264,8 +265,7 @@ const drawCell = (c: CanvasRenderingContext2D, x: number, y: number, cell: Cell)
     c.beginPath(); c.moveTo(mx, my - r); c.lineTo(mx + r, my); c.lineTo(mx, my + r); c.lineTo(mx - r, my); c.closePath(); c.stroke();
   }
   else if (cell.ch === 'L') {
-    // The lamp hangs on the first neighbouring wall (up, right, down, left), as in the game.
-    const side = [[0, -1], [1, 0], [0, 1], [-1, 0]].find(([dx, dy]) => doc.grid[y + dy]?.[x + dx]?.ch === '#');
+    const side = lampSide(x, y, (sx, sy) => doc.grid[sy]?.[sx]?.ch === '#');
     c.fillStyle = '#ffd27a';
     c.beginPath();
     if (side) {
@@ -341,9 +341,7 @@ const drawDoors = (c: CanvasRenderingContext2D) => {
   for (const [ns, d] of Object.entries(doc.doors)) {
     const n = Number(ns);
     for (const e of d.edges) {
-      const [[ax, ay], [bx, by]] = parseEdge(e);
-      const vertical = ax !== bx, ex = Math.max(ax, bx) * CS, ey = Math.max(ay, by) * CS;
-      const [x1, y1, x2, y2] = vertical ? [ex, ay * CS, ex, (ay + 1) * CS] : [ax * CS, ey, (ax + 1) * CS, ey];
+      const [x1, y1, x2, y2] = edgeLine(...parseEdge(e));
       leaf(x1, y1, x2, y2, DOOR_COLORS[doc.kinds[n] ?? 'light'], n);
       number((x1 + x2) / 2, (y1 + y2) / 2, n);
     }
@@ -358,12 +356,7 @@ const drawLightMask = (groups: LightGroup[]) => {
     groupCtx.clearRect(0, 0, groupLayer.width, groupLayer.height);
     groupCtx.setTransform(K, 0, 0, K, 0, 0);
     groupCtx.fillStyle = '#fff';
-    groupCtx.beginPath();
-    for (const poly of g.polys) {
-      groupCtx.moveTo(poly[0].x, poly[0].y);
-      for (const p of poly) groupCtx.lineTo(p.x, p.y);
-      groupCtx.closePath();
-    }
+    polygonsPath(groupCtx, g.polys);
     groupCtx.fill();
     groupCtx.globalCompositeOperation = 'destination-in';
     const falloff = groupCtx.createRadialGradient(g.origin.x, g.origin.y, 0, g.origin.x, g.origin.y, g.radius);
@@ -453,8 +446,7 @@ const draw = () => {
   if (hoverEdge) {
     // The edge a door would go on, with a tick pointing into the cell it would open into.
     const [ix, iy] = hoverEdge.into, [fx, fy] = hoverEdge.from;
-    const vertical = ix !== fx, ex = Math.max(ix, fx) * CS, ey = Math.max(iy, fy) * CS;
-    const [x1, y1, x2, y2] = vertical ? [ex, iy * CS, ex, (iy + 1) * CS] : [ix * CS, ey, (ix + 1) * CS, ey];
+    const [x1, y1, x2, y2] = edgeLine(hoverEdge.into, hoverEdge.from);
     const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
     ctx.strokeStyle = '#f5c542'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
@@ -709,11 +701,6 @@ const load = () => {
     if (saved?.doc) {
       doc = saved.doc;
       tries = saved.tries ?? [];
-      // Saved before doors moved onto edges: drop the old door cells.
-      if (!doc.doors) {
-        doc.doors = {};
-        for (const r of doc.grid) for (const c of r) if ((c.ch >= 'a' && c.ch <= 'i') || c.ch === 'D' || c.ch === 'K') c.ch = '.';
-      }
     }
   } catch { /* start blank */ }
 };
@@ -762,7 +749,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', e => {
   const { x, y } = cellAt(e), { px, py } = pointAt(e), edge = edgeNear(px, py);
   const doorHere = edge ? doorOnEdge(edgeString(edge.from, edge.into)) : undefined;
-  if (e.button === 2 && edge && removeDoorEdge(edge)) { refresh(); return; } // a door comes off an edge first
+  if (e.button === 2 && edge && removeDoorEdge(edge) !== null) { refresh(); return; } // a door comes off an edge first
   if (e.button === 0 && tool === 'door') { if (edge) toggleDoorEdge(edge); refresh(); return; }
   if (e.button === 0 && tool === 'select' && doorHere) { selectedDoor = Number(doorHere[0]); selected = null; refresh(); return; }
   painting = e.button === 2 ? 'erase' : 'paint';

@@ -36,6 +36,13 @@ export const sizeScreen = () => {
   canvas.style.height = `${window.innerHeight}px`;
 }
 
+// Sizes a scratch layer to the world, if it isn't already (resizing reallocates and clears it).
+export const fitToWorld = (c: HTMLCanvasElement) => {
+  if (c.width === worldCanvas.width && c.height === worldCanvas.height) return;
+  c.width = worldCanvas.width;
+  c.height = worldCanvas.height;
+}
+
 // Sizes every world layer to the level, which also wipes the fog memory.
 export const setWorldSize = (width: number, height: number) => {
   for (const c of [worldCanvas, regionLayer, litLayer]) { c.width = width; c.height = height; }
@@ -47,11 +54,9 @@ export const setWorldSize = (width: number, height: number) => {
   }
 }
 
-// Zoom is screen px per world px. From 1 up it's whole numbers only, so every art pixel is an exact
-// square of screen pixels, except exactly fitting the level (which fills the screen) and mid-pinch
-// (`free`). Below 1 (only to fit a level bigger than the screen) it's continuous, down to where the
-// whole level fits. The most is CAMERA.maxZoom art px per CSS px, so a phone's dense screen can
-// zoom in as far, to the eye, as a desktop one.
+// Zoom (screen px per world px) is whole from 1 up, so art pixels stay square, except exactly fitting
+// the level or mid-pinch (`free`). Below 1 it's continuous, down to fitting the whole level. The most
+// is CAMERA.maxZoom art px per CSS px, so a dense phone screen zooms as far, to the eye, as a desktop.
 const exactFit = () => Math.min(canvas.width / worldCanvas.width, canvas.height / worldCanvas.height);
 export const clampZoom = (zoom: number, free = false) => {
   const fit = exactFit();

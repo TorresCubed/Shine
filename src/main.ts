@@ -38,10 +38,9 @@ const playtestLevel = (): Level => {
 const playLevels = playtest ? [playtestLevel()] : levels;
 if (playtest) setViewMode(params.get('view') === 'bright' ? 'bright' : 'fog');
 
-// Arriving at a level: it fades in from black (over `fadeInMs`) as its lights warm up. A new level
-// (not a restart) is zoomed to fit.
-// Behind the title screen a level plays itself out (nobody's at the controls); once you pick one
-// from the menus, `playing` turns on: levels are saved as played, and get their card and hint.
+// Arriving at a level: it fades in from black as its lights warm up, zoomed to fit if it's new (not a
+// restart). Behind the title screen a level just sits there; once one is picked from the menus,
+// `playing` turns on: levels are saved as played and get their card and hint.
 let levelIndex = -1;
 let leaving = false; // fading out to another level (or a restart): ignore Enter and R till it's done
 let playing = false;
@@ -73,10 +72,9 @@ const leaveTo = (index: number, fadeOutMs: number, fadeInMs?: number, fresh?: bo
   screenDark.go(1, fadeOutMs, () => startLevel(index, fadeInMs, fresh));
 }
 
-// A new level opens fitted, as an overview; after CAMERA.start.overviewMs the camera glides in to show
-// about CAMERA.start.viewCells cells across the screen's shorter side (the nearest whole zoom, so the art
-// stays crisp). Not if the level already fits closer than that, if you've zoomed yourself in the
-// meantime, or in the editor's playtest (whose views are there to show the whole level).
+// A new level opens fitted; after CAMERA.start.overviewMs the camera glides in to about
+// CAMERA.start.viewCells cells across the screen's shorter side. Not if it already fits closer, if
+// you've zoomed yourself, or in the playtest (whose views show the whole level).
 let introTimer: ReturnType<typeof setTimeout> | undefined;
 const scheduleIntroZoom = () => {
   clearTimeout(introTimer);
@@ -169,11 +167,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keysDown.delete(e.key.toLowerCase()));
 // Taps, clicks and the on-screen stick. On the Level Complete card a tap goes on to the next level;
 // otherwise it's tapAt, on whatever's under it.
-initTouchControls(canvas, {
-  onTap: (x, y) => isMenuOpen() ? undefined : gameState.status === 'won' ? nextLevel() : tapAt(screenToWorld(x, y)),
-  clampZoom,
-  fitZoom,
-});
+initTouchControls(canvas, (x, y) => isMenuOpen() ? undefined : gameState.status === 'won' ? nextLevel() : tapAt(screenToWorld(x, y)));
 // A wheel click is one step. Trackpads send a stream of small deltas, so those add up to a step.
 let wheelTotal = 0;
 window.addEventListener('wheel', (e) => {

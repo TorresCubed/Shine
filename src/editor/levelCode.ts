@@ -1,16 +1,16 @@
 import { MIRROR_CHARS } from "../content/levels";
 import type { LevelOptions, Side, DoorSpec } from "../content/levels";
-import type { LightKind } from "../core/types";
+import type { Door, LightKind, Mirror } from "../core/types";
 
 // The editor's model of a level, and conversion to and from the text maps and options in levels.ts.
 
-export type Control = 'fixed' | 'turnable' | number;
-export type Aim = 'down' | 'up' | 'left' | 'right';
-export type DoorKind = 'light' | 'locked' | 'lever';
+export type Control = Mirror['control'];
+export type Aim = Side;
+export type DoorKind = Door['kind'];
 // ch: '#' '.' 'S' 'G' 'L' 'F' 'C', 'M' for a mirror, '1'-'9' a trigger (plate or lever).
 export type Cell = { ch: string; mirror?: { step: number; control: Control } };
 // A door: the edges it sits on ("x,y x,y"), the way it opens, and optionally its hinge end.
-export type DocDoor = { edges: string[]; opens: Side; hinge?: Side };
+type DocDoor = { edges: string[]; opens: Side; hinge?: Side };
 export type Doc = {
   grid: Cell[][]; held: LightKind | null; stowed: LightKind[]; aim: Aim;
   kinds: Record<number, DoorKind>; // per trigger number; light unless set

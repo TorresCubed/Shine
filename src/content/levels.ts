@@ -31,8 +31,12 @@ export type LevelOptions = {
 export type Side = keyof typeof AIMS;
 export type DoorSpec = { kind?: Door['kind']; between: string | string[]; opens: Side; hinge?: Side };
 
-export const AIMS = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 };
-const STEP: Record<Side, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+const AIMS = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 };
+export const STEP: Record<Side, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+// The side a lamp at (x, y) hangs on: the first wall next to it (up, right, down, left), if any.
+export const lampSide = (x: number, y: number, isWall: (x: number, y: number) => boolean) =>
+  ([STEP.up, STEP.right, STEP.down, STEP.left]).find(([dx, dy]) => isWall(x + dx, y + dy));
 
 // One leaf of a door: on the edge between two cells ("x,y x,y"), swinging open into the cell on its
 // `opens` side, hinged at the end `hinge` names (by default, the end against a wall).
@@ -93,7 +97,6 @@ export const fromMap = (name: string, map: string[], options: LevelOptions): Lev
       }
       else if (ch === 'P') triggers.set(1, cell);
       else if (ch >= '1' && ch <= '9') triggers.set(Number(ch), cell);
-      else if ((ch >= 'a' && ch <= 'i') || ch === 'D' || ch === 'K') throw new Error(`${name}: doors go in the \`doors\` option now, not on the map ('${ch}' at ${x},${y})`);
       if (ch !== '#') continue;
 
       let end = x;
@@ -131,9 +134,8 @@ export const fromMap = (name: string, map: string[], options: LevelOptions): Lev
       throw new Error(`${name}: mirror at ${m.gridX},${m.gridY} is turned by lever ${m.control}, which isn't a lever`);
     }
   }
-  // Each lamp hangs on the first adjacent wall found (up, right, down, left).
   const lamps: Lamp[] = lampCells.map(c => {
-    const side = [[0, -1], [1, 0], [0, 1], [-1, 0]].find(([dx, dy]) => map[c.gridY + dy]?.[c.gridX + dx] === '#');
+    const side = lampSide(c.gridX, c.gridY, (x, y) => map[y]?.[x] === '#');
     if (!side) throw new Error(`${name}: lamp at ${c.gridX},${c.gridY} needs a wall next to it`);
     return { ...c, toWallX: side[0], toWallY: side[1] };
   });

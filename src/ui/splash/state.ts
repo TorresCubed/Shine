@@ -1,4 +1,5 @@
 import { signal } from "@preact/signals";
+import { easeInOut, clamp01 } from "../../core/util";
 
 // The title's candle: it lights, holds, then sinks to show just its top, and the title comes in.
 // A click or key skips to the end. Shown again, settled, on returning to the title.
@@ -12,9 +13,6 @@ export const splashShown = signal(false);
 let startedAt = 0;
 let skipped = false;
 let onTitle: (() => void) | null = null;
-
-const easeInOut = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
 // Where the opening is at `now`: how lit (0-1) and how far sunk (0-1), both eased.
 export const splashProgress = (now: number) => {

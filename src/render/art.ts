@@ -1,23 +1,20 @@
 import { GRID_SIZE, SPRITES, FOG } from "../core/consts";
 import type { ObjectSprite } from "../core/consts";
-import { setWallImage } from "./walls";
-
-// One cell of floor, repeated as a pattern, and a desaturated, darkened copy for fog memory. The art
-// is scaled to a cell with smoothing off, so pixel art stays crisp at any resolution.
-const makeTile = () => {
-  const tile = document.createElement('canvas');
-  tile.width = tile.height = GRID_SIZE;
-  return tile;
-}
-export const floorTile = makeTile(), dimFloorTile = makeTile();
-const paintTiles = (img: HTMLImageElement, lit: HTMLCanvasElement, dim: HTMLCanvasElement) => {
-  const t = lit.getContext('2d')!;
-  t.imageSmoothingEnabled = false;
-  t.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
-  const d = dim.getContext('2d')!;
+// Art as fog remembers it: grayed and darkened, drawn into `into` (by default a new canvas).
+export const dimCopy = (art: HTMLImageElement | HTMLCanvasElement, into = document.createElement('canvas')) => {
+  into.width = art.width;
+  into.height = art.height;
+  const d = into.getContext('2d')!;
   d.filter = `grayscale(1) brightness(${FOG.floorBrightness})`;
-  d.drawImage(lit, 0, 0);
+  d.drawImage(art, 0, 0);
+  return into;
 }
+
+// One cell of floor, repeated as a pattern, and its fog copy. Scaled to a cell with smoothing off, so
+// pixel art stays crisp.
+export const floorTile = document.createElement('canvas');
+export const dimFloorTile = document.createElement('canvas');
+export let wallImage: HTMLImageElement;
 
 const loadImage = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -51,21 +48,18 @@ export const loadAssets = async () => {
   kinds.forEach((k, i) => playerSprites[k] = images[i]);
   objects.forEach((k, i) => {
     const lit = images[kinds.length + i];
-    const dim = document.createElement('canvas');
-    dim.width = lit.width;
-    dim.height = lit.height;
-    const d = dim.getContext('2d')!;
-    d.filter = `grayscale(1) brightness(${FOG.floorBrightness})`;
-    d.drawImage(lit, 0, 0);
-    objectArt[k] = { lit, dim };
+    objectArt[k] = { lit, dim: dimCopy(lit) };
   });
-  paintTiles(floor, floorTile, dimFloorTile);
-  setWallImage(wall);
+  floorTile.width = floorTile.height = GRID_SIZE;
+  const t = floorTile.getContext('2d')!;
+  t.imageSmoothingEnabled = false;
+  t.drawImage(floor, 0, 0, GRID_SIZE, GRID_SIZE);
+  dimCopy(floorTile, dimFloorTile);
+  wallImage = wall;
 }
 
-// Object art, as drawn and as remembered in fog (grayed and darkened like the floor), turned by
-// `angle` about its anchor (the image's centre unless it names one). Art is scaled so its canvas is
-// one cell, with smoothing off.
+// Object art, lit or as fog remembers it, turned by `angle` about its anchor (the image's centre
+// unless it names one), scaled so its canvas is one cell.
 export type ObjectKind = keyof typeof SPRITES.objects;
 const objectArt = {} as Record<ObjectKind, { lit: HTMLImageElement; dim: HTMLCanvasElement }>;
 export const drawObject = (c: CanvasRenderingContext2D, kind: ObjectKind, x: number, y: number, angle: number, dim: boolean, scale = 1) => {

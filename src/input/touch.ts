@@ -1,20 +1,14 @@
 import { INPUT, CAMERA } from "../core/consts";
 import { stick, input, camera } from "../core/state";
 import { stickView } from "../ui/store";
+import { clampZoom, fitZoom, pixelRatio } from "../render/canvases";
 
-// Touch (and mouse) input on the game canvas. Every press starts out as a possible tap; lifted
-// without moving more than INPUT.tapSlop it's a tap (onTap), but dragged further it becomes the stick,
-// centred where it went down, so the stick can be anywhere and never hides the level. Several
-// fingers at once: one can hold the stick while another taps; two put down together pinch to zoom
-// and drag the view (camera.pan), as a right or middle mouse drag does. The first touch sets
-// input.touch, which shows the on-screen buttons (ui/touch).
+// Touch (and mouse) input on the game canvas. A press lifted within INPUT.tapSlop is a tap; dragged
+// further it becomes the stick, centred where it went down. One finger can hold the stick while
+// another taps; two put down together pinch-zoom and pan, as a right or middle mouse drag pans.
+// The first touch sets input.touch, which shows the on-screen buttons.
 
-type Handlers = {
-  onTap: (clientX: number, clientY: number) => void;
-  clampZoom: (zoom: number, free?: boolean) => number; fitZoom: () => number;
-};
-
-export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, clampZoom, fitZoom }: Handlers) => {
+export const initTouchControls = (canvas: HTMLCanvasElement, onTap: (clientX: number, clientY: number) => void) => {
   // Presses on the canvas: each pointer is a possible tap until it drags; at most one is the stick.
   // Two fingers down together (with no stick held) are a pinch/pan gesture instead.
   const presses = new Map<number, { x: number; y: number }>();
@@ -32,9 +26,8 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, clampZoom,
     const g = gesture!;
     g.fingers.set(id, { x, y });
     const { mid, dist } = spread(g.fingers);
-    const pr = window.devicePixelRatio || 1;
     const z0 = camera.zoom, z1 = clampZoom(z0 * dist / g.dist, true);
-    const fromCentre = (p: { x: number; y: number }, axis: 'x' | 'y') => (p[axis] - (axis === 'x' ? innerWidth : innerHeight) / 2) * pr;
+    const fromCentre = (p: { x: number; y: number }, axis: 'x' | 'y') => (p[axis] - (axis === 'x' ? innerWidth : innerHeight) / 2) * pixelRatio;
     camera.panX += fromCentre(g.mid, 'x') / z0 - fromCentre(mid, 'x') / z1;
     camera.panY += fromCentre(g.mid, 'y') / z0 - fromCentre(mid, 'y') / z1;
     camera.zoom = z1;
@@ -96,9 +89,8 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, clampZoom,
   });
   canvas.addEventListener('pointermove', (e) => {
     if (mousePan && e.pointerType === 'mouse') {
-      const pr = window.devicePixelRatio || 1;
-      camera.panX -= (e.clientX - mousePan.x) * pr / camera.zoom;
-      camera.panY -= (e.clientY - mousePan.y) * pr / camera.zoom;
+      camera.panX -= (e.clientX - mousePan.x) * pixelRatio / camera.zoom;
+      camera.panY -= (e.clientY - mousePan.y) * pixelRatio / camera.zoom;
       mousePan = { x: e.clientX, y: e.clientY };
       return;
     }

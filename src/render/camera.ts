@@ -5,10 +5,9 @@ import { player, camera } from "../core/state";
 import { canvas, ctx, clampZoom, pixelRatio, worldCanvas } from "./canvases";
 import type { Bounds } from "./geometry";
 
-// The camera centres on the player (plus any two-finger pan), clamped to the level's edges; along an
-// axis where the level is smaller than the screen, it's centred. It glides to a new zoom over
-// CAMERA.zoomEaseMs (eased), smoothed on the way and crisp again once it's there; mid-pinch it follows
-// your fingers exactly. `dt` in seconds.
+// The camera follows the player (plus any pan), clamped to the level's edges, or centred on a level
+// smaller than the screen. It glides to a new zoom over CAMERA.zoomEaseMs, drawn smoothed on the way;
+// mid-pinch it follows your fingers exactly.
 let zoomFrom = 0, zoomTo = 0, zoomMs = 0;
 export const screenView = { zoom: 1, x: 0, y: 0 }; // the world-to-screen transform last drawn with, in canvas px
 // The world point under a point on the page (CSS px, e.g. a tap), as last drawn.

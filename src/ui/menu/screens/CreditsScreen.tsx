@@ -1,11 +1,11 @@
 import { BackButton } from "../MenuItem";
-import { CreditsList, LinksList } from "../Credits";
+import { Credits } from "../Credits";
 
 export const CreditsScreen = () => (
   <>
     <h2>Credits</h2>
-    <CreditsList />
-    <LinksList />
+    <Credits />
     <BackButton />
   </>
 );
+  

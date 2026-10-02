@@ -2,7 +2,7 @@ import { polygonsPath } from "../core/util";
 import { fadeProfile, fadeAt } from "../light/rayTracer";
 import type { LightGroup, Penumbra } from "../light/rayTracer";
 import { LIGHT, FLAME, RAYS, LIT_SURFACES } from "../core/consts";
-import { worldCanvas, litCtx, regionCtx } from "./canvases";
+import { worldCanvas, litCtx, regionCtx, fitToWorld } from "./canvases";
 import { frameTime } from "./frame";
 import { skip } from "./debug";
 import { copyRect } from "./geometry";
@@ -28,25 +28,19 @@ export const boundsOf = (group: LightGroup): Bounds => {
   return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
 }
 
-// The light map: each light adds how strongly it lights each spot ('lighter', into the alpha of
-// litLayer): its polygons at LIT_SURFACES.floorStrength (the lit floor is blended that much over what's
-// beneath it), its wall and door faces at full, all faded by its radial falloff, plus a flashlight's
-// hotspot on the wall. Then (see draw) the map is cut to the line of sight and the lit art is laid
-// into it ('source-in': art x how lit), once for every light together, rather than each light
-// building its own lit copy of the scene, which cost a phone most of its frame.
-// A canvas can't store more than full, so the part of a wall's or door's light that goes brighter
-// than its art (its glow, and the hotspot's) goes into a second map, glowLayer, laid in the same way
-// and added on top. (Strong lights overlapping on the floor are capped at the art's brightness.)
+// The light map: each light adds how strongly it lights each spot into litLayer's alpha ('lighter'):
+// its polygons at LIT_SURFACES.floorStrength, its wall and door faces at full, all faded by its
+// falloff, plus a flashlight's wall hotspot. draw then cuts it to the line of sight and lays the lit
+// art in once for every light ('source-in'), far cheaper on a phone than a lit copy per light.
+// A canvas can't store more than full, so light brighter than the art (wall glow, the hotspot) goes
+// into a second map, glowLayer, laid in the same way and added on top.
 export const glowLayer = document.createElement('canvas');
 export const glowCtx = glowLayer.getContext('2d')!;
 
 // Clears both maps within `b`, ready for this frame's lights.
 export const clearLightMaps = (b: Bounds) => {
   litCtx.clearRect(b.x, b.y, b.w, b.h);
-  if (glowLayer.width !== worldCanvas.width || glowLayer.height !== worldCanvas.height) {
-    glowLayer.width = worldCanvas.width;
-    glowLayer.height = worldCanvas.height;
-  }
+  fitToWorld(glowLayer);
   glowCtx.clearRect(b.x, b.y, b.w, b.h);
 }
 
@@ -57,10 +51,7 @@ const beamLayer = document.createElement('canvas');
 const beamCtx = beamLayer.getContext('2d')!;
 const BEAM_PROFILE_STEPS = 24;
 const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds, fill: CanvasGradient) => {
-  if (beamLayer.width !== worldCanvas.width || beamLayer.height !== worldCanvas.height) {
-    beamLayer.width = worldCanvas.width;
-    beamLayer.height = worldCanvas.height;
-  }
+  fitToWorld(beamLayer);
   const s = beamCtx, { x, y } = group.origin;
   s.save();
   s.beginPath();
