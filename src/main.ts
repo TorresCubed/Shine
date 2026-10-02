@@ -1,4 +1,4 @@
-import { FOG_MEMORY_SCALE, GRID_SIZE, CAMERA_MAX_ZOOM, LEVEL_FADE_IN_MS, LEVEL_FADE_OUT_MS, RESTART_FADE_MS, START_VIEW_CELLS, START_OVERVIEW_MS, START_ZOOM_MS } from "./consts";
+import { GRID_SIZE, FOG, CAMERA, TRANSITION } from "./consts";
 import { initTouchControls } from "./touchControls";
 import { screenDark, cardShown } from "./transition";
 import { keysDown, gameState, loadLevel, camera, stick, player } from "./state";
@@ -6,6 +6,7 @@ import { levels, fromMap } from "./levels";
 import type { Level } from "./interfaces";
 import { draw, loadAssets, setViewMode, nextViewMode, snapZoom, screenToWorld } from "./renderer";
 import { act, swapHeldLight, tapAt, fear } from "./playerLogic";
+import { initHud } from "./hud";
 import { initMenu, open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from "./menu";
 import { LEVEL_HINTS } from "./levelInfo";
 import { markCompleted, markPlayed, lastPlayed } from "./progress";
@@ -23,7 +24,7 @@ export const worldCtx = worldCanvas.getContext('2d')!;
 // Fog memory: a low-res grayscale mask, each pixel the brightest that spot has ever been seen lit.
 export const exploredCanvas = document.createElement('canvas');
 export const exploredCtx = exploredCanvas.getContext('2d')!;
-// The same, but fading while out of sight (see MEMORY_FADE_S): how recently each spot was seen. Kept
+// The same, but fading while out of sight (see FOG.fadeS): how recently each spot was seen. Kept
 // inverted (black = just seen, white = forgotten), so fading is exact (see renderer fadeMemory).
 export const recentCanvas = document.createElement('canvas');
 export const recentCtx = recentCanvas.getContext('2d')!;
@@ -53,8 +54,8 @@ const resize = () => {
 const setWorldSize = (width: number, height: number) => {
   for (const c of [worldCanvas, regionLayer, litLayer]) { c.width = width; c.height = height; }
   for (const [c, x] of [[exploredCanvas, exploredCtx], [recentCanvas, recentCtx]] as const) {
-    c.width = Math.ceil(width * FOG_MEMORY_SCALE);
-    c.height = Math.ceil(height * FOG_MEMORY_SCALE);
+    c.width = Math.ceil(width * FOG.memoryScale);
+    c.height = Math.ceil(height * FOG.memoryScale);
     x.fillStyle = c === recentCanvas ? 'white' : 'black'; // nothing remembered (the recent memory is inverted)
     x.fillRect(0, 0, c.width, c.height);
   }
@@ -83,7 +84,7 @@ if (playtest) setViewMode(params.get('view') === 'bright' ? 'bright' : 'fog');
 let levelIndex = -1;
 let leaving = false; // fading out to another level (or a restart): ignore Enter and R till it's done
 let playing = false;
-const startLevel = (index: number, fadeInMs = LEVEL_FADE_IN_MS, fresh = index !== levelIndex) => {
+const startLevel = (index: number, fadeInMs = TRANSITION.levelFadeInMs, fresh = index !== levelIndex) => {
   levelIndex = index;
   loadLevel(playLevels[index]);
   setWorldSize(playLevels[index].width * GRID_SIZE, playLevels[index].height * GRID_SIZE);
@@ -114,12 +115,12 @@ const leaveTo = (index: number, fadeOutMs: number, fadeInMs?: number, fresh?: bo
 // Zoom is screen px per world px. From 1 up it's whole numbers only, so every art pixel is an exact
 // square of screen pixels, except exactly fitting the level (which fills the screen) and mid-pinch
 // (`free`). Below 1 (only to fit a level bigger than the screen) it's continuous, down to where the
-// whole level fits. The most is CAMERA_MAX_ZOOM art px per CSS px, so a phone's dense screen can
+// whole level fits. The most is CAMERA.maxZoom art px per CSS px, so a phone's dense screen can
 // zoom in as far, to the eye, as a desktop one.
 const exactFit = () => Math.min(canvas.width / worldCanvas.width, canvas.height / worldCanvas.height);
 export const clampZoom = (zoom: number, free = false) => {
   const fit = exactFit();
-  const max = Math.max(CAMERA_MAX_ZOOM, Math.floor(CAMERA_MAX_ZOOM * pixelRatio));
+  const max = Math.max(CAMERA.maxZoom, Math.floor(CAMERA.maxZoom * pixelRatio));
   const z = Math.min(max, Math.max(Math.min(fit, 1), zoom));
   if (free || z < 1 || Math.abs(z - fit) < 1e-6) return z;
   return Math.floor(z);
@@ -127,8 +128,8 @@ export const clampZoom = (zoom: number, free = false) => {
 // The closest zoom that shows the whole level.
 export const fitZoom = () => clampZoom(exactFit());
 
-// A new level opens fitted, as an overview; after START_OVERVIEW_MS the camera glides in to show
-// about START_VIEW_CELLS cells across the screen's shorter side (the nearest whole zoom, so the art
+// A new level opens fitted, as an overview; after CAMERA.start.overviewMs the camera glides in to show
+// about CAMERA.start.viewCells cells across the screen's shorter side (the nearest whole zoom, so the art
 // stays crisp). Not if the level already fits closer than that, if you've zoomed yourself in the
 // meantime, or in the editor's playtest (whose views are there to show the whole level).
 let introTimer: ReturnType<typeof setTimeout> | undefined;
@@ -139,13 +140,13 @@ const scheduleIntroZoom = () => {
   introTimer = setTimeout(() => {
     if (!camera.intro) return;
     camera.intro = false;
-    const raw = Math.min(canvas.width, canvas.height) / (START_VIEW_CELLS * GRID_SIZE);
+    const raw = Math.min(canvas.width, canvas.height) / (CAMERA.start.viewCells * GRID_SIZE);
     const z = clampZoom(raw >= 1 ? Math.round(raw) : raw);
     if (z <= camera.zoom) return;
     camera.zoom = z;
-    camera.glideMs = START_ZOOM_MS;
+    camera.glideMs = CAMERA.start.zoomMs;
     camera.fitted = false;
-  }, START_OVERVIEW_MS);
+  }, CAMERA.start.overviewMs);
 }
 
 const ZOOM_OUT_STEP = 1.25; // per step below 1x
@@ -160,9 +161,9 @@ const zoomStep = (dir: 1 | -1) => {
 // watchPlay.)
 const nextLevel = () => {
   if (gameState.status !== 'won' || leaving || isMenuOpen()) return;
-  leaveTo((levelIndex + 1) % playLevels.length, LEVEL_FADE_OUT_MS);
+  leaveTo((levelIndex + 1) % playLevels.length, TRANSITION.levelFadeOutMs);
 };
-const restart = () => { if (playing || playtest) leaveTo(levelIndex, RESTART_FADE_MS, RESTART_FADE_MS * 2); };
+const restart = () => { if (playing || playtest) leaveTo(levelIndex, TRANSITION.restartFadeMs, TRANSITION.restartFadeMs * 2); };
 
 // A level picked from the menus: always starts afresh (card, hint, the zoom-in), even the one behind.
 const play = (index: number) => {
@@ -172,7 +173,7 @@ const play = (index: number) => {
   playing = true;
   markStarted();
   leaving = false;
-  leaveTo(index, LEVEL_FADE_OUT_MS, LEVEL_FADE_IN_MS, true);
+  leaveTo(index, TRANSITION.levelFadeOutMs, TRANSITION.levelFadeInMs, true);
 }
 
 // Finishing a level saves it, as soon as you reach the exit. And walking into the dark for a while
@@ -241,6 +242,7 @@ window.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 initMenu({ play, resume: () => {}, restart, levelCount: playLevels.length });
+initHud(() => playing && !isMenuOpen(), swapHeldLight); // what you're carrying, while you play
 
 resize();
 // ?level=N goes straight into level N (numbered from 1), as does the editor's playtest. Otherwise the

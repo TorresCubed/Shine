@@ -1,5 +1,5 @@
 import type { GridPos, Point, Segment } from "./interfaces";
-import { GRID_SIZE, MIRROR_HALF_LENGTH, MIRROR_STEPS } from "./consts";
+import { GRID_SIZE, MIRROR } from "./consts";
 
 export const cellCenter = (c: GridPos): Point => ({ x: (c.gridX + 0.5) * GRID_SIZE, y: (c.gridY + 0.5) * GRID_SIZE });
 
@@ -7,8 +7,8 @@ export const sameCell = (a: GridPos, b: GridPos) => a.gridX === b.gridX && a.gri
 
 // A mirror's segment at orientation `step` (fractional mid-turn).
 export const mirrorSegment = (m: GridPos, step: number): Segment => {
-  const c = cellCenter(m), a = step * Math.PI / MIRROR_STEPS;
-  const dx = Math.cos(a) * MIRROR_HALF_LENGTH, dy = Math.sin(a) * MIRROR_HALF_LENGTH;
+  const c = cellCenter(m), a = step * Math.PI / MIRROR.steps;
+  const dx = Math.cos(a) * MIRROR.halfLength, dy = Math.sin(a) * MIRROR.halfLength;
   return { x1: c.x - dx, y1: c.y - dy, x2: c.x + dx, y2: c.y + dy };
 }
 

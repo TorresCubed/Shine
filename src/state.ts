@@ -1,5 +1,5 @@
 import type { Door, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Segment, Wall } from "./interfaces";
-import { GRID_SIZE, PLAYER_HALF_SIZE } from "./consts";
+import { GRID_SIZE, PLAYER } from "./consts";
 import { cellCenter, easeInOut } from "./util";
 
 // Mutable game state. `let` exports are live bindings: importers see the new values after
@@ -14,7 +14,7 @@ export const input = { touch: false };
 // changes size). pan: how far (world px) a two-finger drag has moved the view off the player; it
 // drifts back once you walk. pinching: a two-finger gesture is under way. intro: a new level's
 // zoom-in from the overview is still to come (zooming yourself cancels it). glideMs: how long the next
-// zoom change takes to glide (null: ZOOM_EASE_MS).
+// zoom change takes to glide (null: CAMERA.zoomEaseMs).
 export const camera = { zoom: 1, fitted: true, panX: 0, panY: 0, pinching: false, intro: false, glideMs: null as number | null };
 
 export const player = {
@@ -42,7 +42,7 @@ export const gameState: { status: 'playing' | 'won'; startedAt: number } = { sta
 // lockFlashAt when it last changed (performance.now() clock), for the flash that shows it even in fog.
 // showWhole: this frame it's seen, or (seen before) it's doing something, so it's shown as it is,
 // all of it, even in fog (the renderer refreshes its memory). plateWake: how long its plate has been
-// waking, in ms, from 0 (dead) to PLATE_WAKE_MS (active), while triggerOn. Going dark it drops to 0
+// waking, in ms, from 0 (dead) to PLATE.wakeMs (active), while triggerOn. Going dark it drops to 0
 // and winks out instead: winkAt when (performance.now() clock), winkFrom how awake it was (0-1).
 export type DoorState = Door & {
   openAmount: number; seenOpenAmount: number; triggerOn: boolean; opened: boolean;
@@ -91,7 +91,7 @@ export const shine = (x: number, y: number) => shines.push({ x, y, at: performan
 
 // Every cell the player's footprint overlaps with its centre at (x, y).
 export const footprintCells = (x: number, y: number): GridPos[] => {
-  const h = PLAYER_HALF_SIZE, e = 0.001;
+  const h = PLAYER.collisionRadius, e = 0.001;
   const cells: GridPos[] = [];
   for (let gx = Math.floor((x - h) / GRID_SIZE); gx <= Math.floor((x + h - e) / GRID_SIZE); gx++)
     for (let gy = Math.floor((y - h) / GRID_SIZE); gy <= Math.floor((y + h - e) / GRID_SIZE); gy++)

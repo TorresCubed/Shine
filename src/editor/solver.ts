@@ -1,5 +1,5 @@
 import type { Level } from "../interfaces";
-import { FEAR_REACH, GRID_SIZE, LIT_THRESHOLD } from "../consts";
+import { GRID_SIZE, PLAYER, LIGHT } from "../consts";
 import { brightnessAt } from "../rayTracer";
 import { traceLevel } from "./preview";
 
@@ -68,7 +68,7 @@ export const solve = async (level: Level, onProgress: (done: number, total: numb
             if (wallAt(nx, cy) || wallAt(cx, ny)) continue;
             const corner = { x: (cx + 0.5 + dx / 2) * GRID_SIZE, y: (cy + 0.5 + dy / 2) * GRID_SIZE };
             const lit = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([px, py]) =>
-              brightnessAt({ x: corner.x + px * FEAR_REACH, y: corner.y + py * FEAR_REACH }, t.groups) >= LIT_THRESHOLD);
+              brightnessAt({ x: corner.x + px * PLAYER.fearReach, y: corner.y + py * PLAYER.fearReach }, t.groups) >= LIGHT.litThreshold);
             if (!lit) continue;
           }
           if (nx === level.goal.gridX && ny === level.goal.gridY) { won = true; break; }

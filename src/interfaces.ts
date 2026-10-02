@@ -15,7 +15,7 @@ export interface FloorLight extends GridPos, Point { kind: LightKind; aimAngle: 
 export interface Lamp extends GridPos { toWallX: number; toWallY: number; }
 
 // A mirror: a thin two-sided segment across the middle of its cell. `step` is its orientation, in
-// units of 180° / MIRROR_STEPS (0 = horizontal). `control` is what can turn it: nothing, the player
+// units of 180° / MIRROR.steps (0 = horizontal). `control` is what can turn it: nothing, the player
 // (Space, standing in its cell), or the lever with that id (a step per pull).
 export interface Mirror extends GridPos { step: number; control: 'fixed' | 'turnable' | number; }
 

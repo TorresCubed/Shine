@@ -1,10 +1,6 @@
 import type { Point, Scene } from "./interfaces";
 import { SCENE_STRIDE } from "./interfaces";
-import {
-  RAY_REFINE_DEPTH, MAX_TRACED_RAYS, LIGHT_FALLOFF_STOPS, FLASHLIGHT_CONE, FLASHLIGHT_CORE, FLASHLIGHT_RAY_COUNT, MIRROR_EDGE_CORE,
-  FLASHLIGHT_SPILL_CONE, FLASHLIGHT_SPILL_STRENGTH, FLASHLIGHT_SPILL_RANGE, FLASHLIGHT_SPILL_RAY_COUNT, MAX_MIRROR_BOUNCES,
-  SHADOW_SOFT_SIZE, SHADOW_SOFT_MAX, SHADOW_SOFT_STEPS, SHADOW_EDGE_MIN_JUMP,
-} from "./consts";
+import { LIGHT, FLASHLIGHT, RAYS } from "./consts";
 
 // Forward ray tracing. Rays leave the light, and each one bounces off mirrors (angle of incidence =
 // angle of reflection) until it hits a wall, runs out of range, or runs out of bounces.
@@ -57,7 +53,7 @@ export interface LightGroup {
 }
 
 // A shadow's soft edge: a fan from just past the corner casting it, `ends[0]` along the shadow's
-// edge and each next one further into the shadow, to `ends[SHADOW_SOFT_STEPS]`.
+// edge and each next one further into the shadow, to `ends[RAYS.softShadowSteps]`.
 export interface Penumbra { apex: Point; ends: Point[] }
 
 // A fade across a group, seen from its origin: full within `core` of `half` either side of `axis`,
@@ -165,7 +161,7 @@ const trace = (ray: RayPath, ox: number, oy: number, angle: number, budget: numb
 }
 
 const nextRay = (maxLegs: number): RayPath | null => {
-  if (poolUsed >= MAX_TRACED_RAYS) return null;
+  if (poolUsed >= RAYS.maxTraced) return null;
   if (poolUsed === pool.length) pool.push(new RayPath(Math.max(maxLegs, poolLegs)));
   return pool[poolUsed++];
 }
@@ -209,7 +205,7 @@ const emitStrip = (groups: Map<number, LightGroup>, k: number, first: number, la
       const leaves = Math.atan2(r.legs[l + 3] - v.y, r.legs[l + 2] - v.x);
       group.beamAxis = leaves + sign * (beam.axis - r.angle);
       group.beamHalf = beam.half;
-      group.fades = [{ axis: group.beamAxis, half: beam.half, core: FLASHLIGHT_CORE }];
+      group.fades = [{ axis: group.beamAxis, half: beam.half, core: FLASHLIGHT.beamCore }];
     }
     groups.set(key, group);
   }
@@ -249,7 +245,7 @@ export const castLight = (
   for (let i = 1; i <= baseRayCount; i++) {
     const next = nextRay(maxLegs) ?? new RayPath(maxLegs);
     trace(next, origin.x, origin.y, startAngle + span * (i / baseRayCount), budget, scene, maxLegs);
-    refine(prev, next, RAY_REFINE_DEPTH, origin.x, origin.y, budget, scene, maxLegs);
+    refine(prev, next, RAYS.refineDepth, origin.x, origin.y, budget, scene, maxLegs);
     rays.push(next);
     prev = next;
   }
@@ -283,7 +279,7 @@ export const castLight = (
       const off = Math.atan2(p.y - g.origin.y, p.x - g.origin.x) - axis;
       half = Math.max(half, Math.abs(Math.atan2(Math.sin(off), Math.cos(off))));
     }
-    if (half > 1e-6) (g.fades ??= []).push({ axis, half, core: MIRROR_EDGE_CORE });
+    if (half > 1e-6) (g.fades ??= []).push({ axis, half, core: FLASHLIGHT.beamCore });
   }
 
   const result = [...groups.values()];
@@ -310,12 +306,12 @@ export const clearDistance = (scene: Scene, from: Point, to: Point) => {
   return best * Math.hypot(dx, dy);
 }
 
-// Brightness at `t` = distance / radius, from LIGHT_FALLOFF_STOPS.
+// Brightness at `t` = distance / radius, from LIGHT.falloffStops.
 const falloffAt = (t: number) => {
-  for (let i = 1; i < LIGHT_FALLOFF_STOPS.length; i++) {
-    const [t1, v1] = LIGHT_FALLOFF_STOPS[i];
+  for (let i = 1; i < LIGHT.falloffStops.length; i++) {
+    const [t1, v1] = LIGHT.falloffStops[i];
     if (t <= t1) {
-      const [t0, v0] = LIGHT_FALLOFF_STOPS[i - 1];
+      const [t0, v0] = LIGHT.falloffStops[i - 1];
       return v0 + (v1 - v0) * (t - t0) / (t1 - t0);
     }
   }
@@ -348,7 +344,7 @@ export const brightnessAt = (p: Point, groups: LightGroup[]) => {
 
 // Spill off a mirror: light scattering off the edges of what a mirror reflects, as a flashlight's
 // beam spills past its edge. Just past each side of the reflection (as seen from its virtual source)
-// the light carries on, dim (FLASHLIGHT_SPILL_STRENGTH), fading out over the same extra width a
+// the light carries on, dim (FLASHLIGHT.spill.strength), fading out over the same extra width a
 // flashlight's spill adds to its beam, and shadowed by whatever it meets (it doesn't bounce again).
 // It starts on the mirror's line just past its end, so it only spills where the mirror stops, not
 // into a shadow cast across the mirror.
@@ -358,7 +354,7 @@ const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
   if (g.mirrorSeg === undefined || g.mirrorSeg < 0 || !window || g.spill) return [];
   const c = scene.coords, o = g.mirrorSeg * SCENE_STRIDE;
   const mx = c[o], my = c[o + 1], ex = c[o + 2] - mx, ey = c[o + 3] - my;
-  const extra = window.half * (FLASHLIGHT_SPILL_CONE / FLASHLIGHT_CONE - 1);
+  const extra = window.half * (FLASHLIGHT.spill.cone / FLASHLIGHT.cone - 1);
   const others = g.fades!.slice(0, -1); // a beam's own fade still applies
   const spills: LightGroup[] = [];
   for (const side of [-1, 1]) {
@@ -381,7 +377,7 @@ const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
     if (starts.length < 2) continue;
     spills.push({
       depth: g.depth, origin: g.origin, radius: g.radius, polys: [[...starts, ...ends.reverse()]],
-      strength: FLASHLIGHT_SPILL_STRENGTH * (g.strength ?? 1), spill: true, beamAxis: g.beamAxis, beamHalf: g.beamHalf,
+      strength: FLASHLIGHT.spill.strength * (g.strength ?? 1), spill: true, beamAxis: g.beamAxis, beamHalf: g.beamHalf,
       flame: g.flame,
       fades: [...others, { axis: window.axis, half: window.half + extra, core: window.half / (window.half + extra) }],
     });
@@ -391,7 +387,7 @@ const addMirrorSpill = (g: LightGroup, scene: Scene): LightGroup[] => {
 
 // Soft shadows (only drawn: plates, walking and fog memory keep the hard edge). A real light isn't a
 // point, so past a corner its shadow's edge fades rather than cutting off: over the angle the light's
-// size (SHADOW_SOFT_SIZE) makes from the corner, so the fade is wider near the light and widens with
+// size (RAYS.softShadowSize) makes from the corner, so the fade is wider near the light and widens with
 // distance past the corner. A shadow's edge is where two neighbouring rays (a whisker apart, as
 // refining leaves them at an edge) end at very different distances: the nearer one on the corner,
 // the further one past it. From just past the corner, a fan of rays sweeps into the shadow, each
@@ -425,7 +421,7 @@ const addPenumbras = (g: LightGroup, scene: Scene) => {
     for (let i = 0; i + 1 < hits.length; i++) {
       const a = hits[i], b = hits[i + 1];
       const da = Math.hypot(a.x - o.x, a.y - o.y), db = Math.hypot(b.x - o.x, b.y - o.y);
-      if (Math.abs(da - db) < SHADOW_EDGE_MIN_JUMP) continue;
+      if (Math.abs(da - db) < RAYS.edgeMinJump) continue;
       const near = da < db ? a : b, far = da < db ? b : a, dNear = Math.min(da, db);
       const aNear = Math.atan2(near.y - o.y, near.x - o.x), aFar = Math.atan2(far.y - o.y, far.x - o.x);
       const gap = Math.atan2(Math.sin(aNear - aFar), Math.cos(aNear - aFar));
@@ -433,12 +429,12 @@ const addPenumbras = (g: LightGroup, scene: Scene) => {
       // Pivot on the grazing ray just past the corner (the near ray's end is on the wall's face, so
       // a fan from there would start inside the wall), and turn toward the near side: the shadow.
       const apex = { x: o.x + Math.cos(aFar) * dNear, y: o.y + Math.sin(aFar) * dNear };
-      const width = Math.min(SHADOW_SOFT_MAX, Math.atan2(SHADOW_SOFT_SIZE, dNear)) * Math.sign(gap);
+      const width = Math.min(RAYS.softShadowMax, Math.atan2(RAYS.softShadowSize, dNear)) * Math.sign(gap);
       const reach = g.radius - dNear;
       if (reach <= 1) continue;
       const ends: Point[] = [];
-      for (let j = 0; j <= SHADOW_SOFT_STEPS; j++) {
-        const angle = aFar + width * j / SHADOW_SOFT_STEPS, dx = Math.cos(angle), dy = Math.sin(angle);
+      for (let j = 0; j <= RAYS.softShadowSteps; j++) {
+        const angle = aFar + width * j / RAYS.softShadowSteps, dx = Math.cos(angle), dy = Math.sin(angle);
         const d = nearbyClearDistance(scene, apex.x, apex.y, dx, dy, reach);
         ends.push({ x: apex.x + dx * d, y: apex.y + dy * d });
       }
@@ -452,14 +448,14 @@ const addPenumbras = (g: LightGroup, scene: Scene) => {
 // with its own shadows and reflections. Shared by the game and the level editor, so both see the
 // same light.
 export const castFlashlight = (at: Point, aim: number, range: number, scene: Scene, soft = false) => {
-  const beam = castLight(at, aim - FLASHLIGHT_CONE / 2, FLASHLIGHT_CONE, FLASHLIGHT_RAY_COUNT, range, scene, MAX_MIRROR_BOUNCES, true, soft);
-  const spill = castLight(at, aim - FLASHLIGHT_SPILL_CONE / 2, FLASHLIGHT_SPILL_CONE, FLASHLIGHT_SPILL_RAY_COUNT,
-    Math.max(1, range * FLASHLIGHT_SPILL_RANGE), scene, MAX_MIRROR_BOUNCES);
+  const beam = castLight(at, aim - FLASHLIGHT.cone / 2, FLASHLIGHT.cone, FLASHLIGHT.rayCount, range, scene, LIGHT.maxMirrorBounces, true, soft);
+  const spill = castLight(at, aim - FLASHLIGHT.spill.cone / 2, FLASHLIGHT.spill.cone, FLASHLIGHT.spill.rayCount,
+    Math.max(1, range * FLASHLIGHT.spill.range), scene, LIGHT.maxMirrorBounces);
   // The spill fades from where the beam ends (its first fade is its own, across it).
   for (const g of spill.groups) {
-    g.strength = FLASHLIGHT_SPILL_STRENGTH;
+    g.strength = FLASHLIGHT.spill.strength;
     g.spill = true;
-    if (g.fades?.[0]) g.fades[0].core = FLASHLIGHT_CONE / FLASHLIGHT_SPILL_CONE;
+    if (g.fades?.[0]) g.fades[0].core = FLASHLIGHT.cone / FLASHLIGHT.spill.cone;
   }
   return { groups: [...beam.groups, ...spill.groups], rayCount: beam.rayCount + spill.rayCount };
 }

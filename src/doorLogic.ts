@@ -1,7 +1,7 @@
 import type { LightGroup } from "./rayTracer";
 import type { Point } from "./interfaces";
 import { brightnessAt, insideAny } from "./rayTracer";
-import { LIT_THRESHOLD, DOOR_OPEN_MS, DOOR_CREAK, DOOR_CREAK_MS, DOOR_SLAM_MS, PLATE_WAKE_MS } from "./consts";
+import { LIGHT, DOOR, PLATE } from "./consts";
 import { doors, levers, player, footprintCells, doorLeaves } from "./state";
 import type { DoorState } from "./state";
 import { cellCenter, sameCell } from "./util";
@@ -24,25 +24,25 @@ export const tryOpenLockedDoor = (door: DoorState) => {
   if (door.kind === 'locked' && door.triggerOn) door.opened = true;
 }
 
-// The openAmount that swings a leaf DOOR_CREAK of the way (the swing is eased: see doorLeaves).
-const CREAK_AMOUNT = DOOR_CREAK <= 0.5 ? Math.cbrt(DOOR_CREAK / 4) : 1 - Math.cbrt((1 - DOOR_CREAK) / 4);
+// The openAmount that swings a leaf DOOR.creak of the way (the swing is eased: see doorLeaves).
+const CREAK_AMOUNT = DOOR.creak <= 0.5 ? Math.cbrt(DOOR.creak / 4) : 1 - Math.cbrt((1 - DOOR.creak) / 4);
 
 // Light doors follow their plate, lever doors their lever, and locked doors stay open once opened.
 // A door never swings into you: while you're in a cell a leaf swings through, it stays where it is,
 // so it won't close on you or open into you. `dt` in seconds.
 export const updateDoors = (groups: LightGroup[], view: Point[][], dt: number) => {
-  const step = dt * 1000 / DOOR_OPEN_MS;
+  const step = dt * 1000 / DOOR.openMs;
   const underPlayer = footprintCells(player.x, player.y);
   for (const door of doors) {
     door.triggerOn = door.kind === 'lever'
       ? levers.some(l => l.on && sameCell(l, door.trigger))
-      : brightnessAt(cellCenter(door.trigger), groups) >= LIT_THRESHOLD;
+      : brightnessAt(cellCenter(door.trigger), groups) >= LIGHT.litThreshold;
     if (door.triggerOn) {
-      door.plateWake = Math.min(PLATE_WAKE_MS, door.plateWake + dt * 1000);
+      door.plateWake = Math.min(PLATE.wakeMs, door.plateWake + dt * 1000);
       door.winkAt = -Infinity;
     } else if (door.plateWake > 0) {
       door.winkAt = performance.now();
-      door.winkFrom = door.plateWake / PLATE_WAKE_MS;
+      door.winkFrom = door.plateWake / PLATE.wakeMs;
       door.plateWake = 0;
     }
     const inTheWay = door.leaves.some(l => underPlayer.some(c => sameCell(c, l.into)));
@@ -52,8 +52,8 @@ export const updateDoors = (groups: LightGroup[], view: Point[][], dt: number) =
     const before = door.openAmount;
     if (!inTheWay) {
       door.openAmount = target > door.openAmount
-        ? Math.min(target, door.openAmount + (ajar ? dt * 1000 * CREAK_AMOUNT / DOOR_CREAK_MS : step))
-        : Math.max(target, door.openAmount - (ajar ? dt * 1000 * CREAK_AMOUNT / DOOR_SLAM_MS : step));
+        ? Math.min(target, door.openAmount + (ajar ? dt * 1000 * CREAK_AMOUNT / DOOR.creakMs : step))
+        : Math.max(target, door.openAmount - (ajar ? dt * 1000 * CREAK_AMOUNT / DOOR.slamMs : step));
     }
     let active = door.openAmount !== before;
     // A locked door flashes when it unlocks or locks again (not for how it starts).

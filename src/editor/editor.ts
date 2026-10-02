@@ -3,7 +3,7 @@ import type { Side } from "../levels";
 import { doorLeaves } from "../state";
 import type { Level, LightKind } from "../interfaces";
 import type { LightGroup } from "../rayTracer";
-import { GRID_SIZE, LIGHT_FALLOFF_STOPS, LIT_THRESHOLD } from "../consts";
+import { GRID_SIZE, LIGHT } from "../consts";
 import { blank, fromSource, toSource, exportCode, pairsInUse, parseEdge, edgeString } from "./levelCode";
 import type { Cell, Control, Aim, DoorKind, Doc } from "./levelCode";
 import { traceLevel } from "./preview";
@@ -217,7 +217,7 @@ const traceFearLine = (t: Traced) => {
   const lit: boolean[][] = [];
   for (let j = 0; j < rows; j++) {
     lit.push([]);
-    for (let i = 0; i < cols; i++) lit[j].push(t.at({ x: (i + 0.5) * s * GRID_SIZE, y: (j + 0.5) * s * GRID_SIZE }) >= LIT_THRESHOLD);
+    for (let i = 0; i < cols; i++) lit[j].push(t.at({ x: (i + 0.5) * s * GRID_SIZE, y: (j + 0.5) * s * GRID_SIZE }) >= LIGHT.litThreshold);
   }
   const segs: [number, number, number, number][] = [];
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
@@ -367,7 +367,7 @@ const drawLightMask = (groups: LightGroup[]) => {
     groupCtx.fill();
     groupCtx.globalCompositeOperation = 'destination-in';
     const falloff = groupCtx.createRadialGradient(g.origin.x, g.origin.y, 0, g.origin.x, g.origin.y, g.radius);
-    for (const [t, v] of LIGHT_FALLOFF_STOPS) falloff.addColorStop(t, `rgba(255,255,255,${v})`);
+    for (const [t, v] of LIGHT.falloffStops) falloff.addColorStop(t, `rgba(255,255,255,${v})`);
     groupCtx.fillStyle = falloff;
     groupCtx.fillRect(0, 0, groupLayer.width / K, groupLayer.height / K);
     groupCtx.globalCompositeOperation = 'source-over';
@@ -427,7 +427,7 @@ const draw = () => {
   if (traced && level && view !== 'plain' && showPlates) {
     level.doors.forEach((d, i) => {
       if (d.kind === 'lever') return;
-      const v = traced!.plates[i], lit = v >= LIT_THRESHOLD, px = d.trigger.gridX * CS, py = d.trigger.gridY * CS;
+      const v = traced!.plates[i], lit = v >= LIGHT.litThreshold, px = d.trigger.gridX * CS, py = d.trigger.gridY * CS;
       ctx.strokeStyle = lit ? '#7cc47a' : '#e06a55'; ctx.lineWidth = 2;
       ctx.strokeRect(px + 2, py + 2, CS - 4, CS - 4);
       ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(px + 2, py + CS * 0.675, CS - 4, CS * 0.275);

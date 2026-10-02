@@ -3,7 +3,7 @@ import { CONTROLS } from "./levelInfo";
 import { isCompleted, isPlayed, completedCount, lastPlayed, resetProgress } from "./progress";
 import { input } from "./state";
 import { showSplash } from "./splash";
-import flashlightUrl from "./assets/droppedFlashlight.png";
+import flashlightUrl from "./assets/interactive/droppedFlashlight.png";
 
 // The menus: an HTML overlay over the game canvas (which keeps drawing behind it), so text is crisp
 // and buttons work alike by mouse, touch and keyboard (Tab / Enter, Esc to go back). While it's open

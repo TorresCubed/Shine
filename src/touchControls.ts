@@ -1,8 +1,8 @@
-import { STICK_RADIUS, TAP_SLOP, PINCH_FIT_SNAP } from "./consts";
+import { INPUT, CAMERA } from "./consts";
 import { stick, input, lightState, gameState, camera, keysDown } from "./state";
 
 // Touch (and mouse) input on the game canvas. Every press starts out as a possible tap; lifted
-// without moving more than TAP_SLOP it's a tap (onTap), but dragged further it becomes the stick,
+// without moving more than INPUT.tapSlop it's a tap (onTap), but dragged further it becomes the stick,
 // centred where it went down, so the stick can be anywhere and never hides the level. Several
 // fingers at once: one can hold the stick while another taps; two put down together pinch to zoom
 // and drag the view (camera.pan), as a right or middle mouse drag does. Once touch is used, on-screen buttons
@@ -22,9 +22,9 @@ const el = (tag: string, css: string, parent: HTMLElement = document.body) => {
 
 export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, onRestart, clampZoom, fitZoom }: Handlers) => {
   // The stick: a ring where it went down and a knob under your thumb. Drawn only while held.
-  const knobSize = STICK_RADIUS * 0.8;
-  const base = el('div', `position:fixed; left:0; top:0; width:${STICK_RADIUS * 2}px; height:${STICK_RADIUS * 2}px;
-    margin:${-STICK_RADIUS}px 0 0 ${-STICK_RADIUS}px; border-radius:50%; border:2px solid rgba(255,255,255,0.25);
+  const knobSize = INPUT.stick.radius * 0.8;
+  const base = el('div', `position:fixed; left:0; top:0; width:${INPUT.stick.radius * 2}px; height:${INPUT.stick.radius * 2}px;
+    margin:${-INPUT.stick.radius}px 0 0 ${-INPUT.stick.radius}px; border-radius:50%; border:2px solid rgba(255,255,255,0.25);
     background:rgba(255,255,255,0.06); box-sizing:border-box; pointer-events:none; display:none;`);
   const knob = el('div', `position:absolute; left:50%; top:50%; width:${knobSize}px; height:${knobSize}px;
     margin:${-knobSize / 2}px 0 0 ${-knobSize / 2}px; border-radius:50%; background:rgba(255,255,255,0.3);`, base);
@@ -61,20 +61,20 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     gesture = null;
     camera.pinching = false;
     const fit = fitZoom(), z = camera.zoom;
-    camera.fitted = Math.abs(z - fit) <= PINCH_FIT_SNAP * fit;
+    camera.fitted = Math.abs(z - fit) <= CAMERA.pinchFitSnap * fit;
     camera.zoom = camera.fitted ? fit : z >= 1 ? Math.round(z) : z;
   }
 
   const moveStick = (x: number, y: number) => {
     let dx = x - centre.x, dy = y - centre.y;
     const len = Math.hypot(dx, dy);
-    if (len > STICK_RADIUS) {
+    if (len > INPUT.stick.radius) {
       // Dragged past the edge: the ring follows the thumb, so turning round never needs a long drag back.
-      centre = { x: x - dx / len * STICK_RADIUS, y: y - dy / len * STICK_RADIUS };
+      centre = { x: x - dx / len * INPUT.stick.radius, y: y - dy / len * INPUT.stick.radius };
       dx = x - centre.x; dy = y - centre.y;
     }
-    stick.x = dx / STICK_RADIUS;
-    stick.y = dy / STICK_RADIUS;
+    stick.x = dx / INPUT.stick.radius;
+    stick.y = dy / INPUT.stick.radius;
     base.style.transform = `translate(${centre.x}px, ${centre.y}px)`;
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
   }
@@ -120,7 +120,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     if (e.pointerId === stickId) return moveStick(e.clientX, e.clientY);
     if (gesture?.fingers.has(e.pointerId)) return moveGesture(e.pointerId, e.clientX, e.clientY);
     const start = presses.get(e.pointerId);
-    if (!start || stickId !== null || Math.hypot(e.clientX - start.x, e.clientY - start.y) <= TAP_SLOP) return;
+    if (!start || stickId !== null || Math.hypot(e.clientX - start.x, e.clientY - start.y) <= INPUT.tapSlop) return;
     presses.delete(e.pointerId);
     stickId = e.pointerId;
     centre = start;
@@ -133,7 +133,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, { onTap, onSwap, on
     if (gesture?.fingers.has(e.pointerId)) return endGesture(); // the other finger then does nothing till lifted
     const start = presses.get(e.pointerId);
     presses.delete(e.pointerId);
-    if (start && !cancelled && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= TAP_SLOP) onTap(e.clientX, e.clientY);
+    if (start && !cancelled && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= INPUT.tapSlop) onTap(e.clientX, e.clientY);
   }
   canvas.addEventListener('pointerup', (e) => end(e, false));
   canvas.addEventListener('pointercancel', (e) => end(e, true));

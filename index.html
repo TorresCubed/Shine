@@ -188,6 +188,33 @@
       }
       .menu-button.shown { display: block; }
       .menu-button:hover { border-color: var(--gold); color: var(--gold); }
+      /* What you're carrying (hud.ts): beside the menu button. */
+      .hud {
+        position: fixed; z-index: 5; display: none; gap: 8px; align-items: flex-end;
+        top: calc(env(safe-area-inset-top) + 12px); left: calc(env(safe-area-inset-left) + 66px);
+      }
+      .hud.shown { display: flex; }
+      .hud-slot {
+        position: relative; box-sizing: border-box; padding: 0; margin: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 8px; background: rgba(0, 0, 0, 0.5); font: inherit;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .hud-hand { width: 52px; height: 52px; border: 2px solid var(--gold-dim); }
+      .hud-pocket { width: 42px; height: 42px; border: 2px solid rgba(255, 255, 255, 0.22); cursor: pointer; }
+      .hud-pocket:hover { border-color: var(--gold-dim); }
+      .hud-pocket .hud-icon { opacity: 0.6; } /* switched off */
+      .hud-slot.empty { background: rgba(0, 0, 0, 0.25); border-style: dashed; border-color: rgba(255, 255, 255, 0.15); }
+      .hud-pocket.empty { cursor: default; }
+      .hud-icon { background-repeat: no-repeat; image-rendering: pixelated; }
+      .hud-label {
+        position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+        font: 600 11px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+        text-shadow: 0 0 4px #000;
+      }
+      .hud-slot.pop { animation: hud-pop 220ms ease-out; }
+      @keyframes hud-pop { 40% { transform: scale(1.12); } }
+
       .hint, .level-card {
         position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
         pointer-events: none; opacity: 0; transition: opacity 600ms ease;
@@ -202,6 +229,8 @@
       .level-card { top: calc(env(safe-area-inset-top) + 18px); display: flex; flex-direction: column; gap: 2px; max-width: calc(100vw - 140px); }
       .card-title { font: 500 26px var(--display); letter-spacing: 0.05em; color: var(--gold); text-shadow: 0 0 14px rgba(0, 0, 0, 0.9); }
       .hint.shown, .level-card.shown { opacity: 1; }
+      /* Narrow screens: the level card goes below the carried-lights panel rather than across it. */
+      @media (max-width: 520px) { .level-card { top: calc(env(safe-area-inset-top) + 88px); } }
     </style>
   </head>
   <body>

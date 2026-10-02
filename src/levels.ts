@@ -220,7 +220,7 @@ level([
 // and the door opens, but step up to it and the plate goes dark and it shuts again. Drop the
 // candle at (4,4) instead: from there it lights the plate, the doorway, and the exit (exactly 3
 // cells away, ~15.3% brightness, just over the 15% the fear rule needs), so you can walk out.
-// Geometry is tight: changing CANDLE_RADIUS, LIT_THRESHOLD or the falloff can break this level.
+// Geometry is tight: changing FLAME.candleRadius, LIGHT.litThreshold or the falloff can break this level.
 level([
   "##########",
   "####G#####",
