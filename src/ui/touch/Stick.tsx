@@ -1,12 +1,11 @@
-import { INPUT } from "../../core/consts";
-import { stickView } from "../store";
-import "./Stick.css";
+import { INPUT } from '../../core/consts';
+import { stickView } from '../store';
+import './Stick.css';
 
 // The on-screen stick: a ring where the drag began, and a knob under the thumb. Only while held.
 export const Stick = () => {
-  const view = stickView.value;
-  if (!view) return null;
-  const { centre, knob } = view;
+  if (!stickView.value) return null;
+  const { centre, knob } = stickView.value;
   return (
     <div
       className="stick"

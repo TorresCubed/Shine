@@ -1,7 +1,7 @@
-import { levelCard } from "../store";
-import { cx } from "../cx";
-import { levelLabel } from "../levelLabel";
-import "./LevelCard.css";
+import { levelCard } from '../store';
+import { cx } from '../cx';
+import { levelLabel } from '../levelLabel';
+import './LevelCard.css';
 
 export const LevelCard = () => {
   const { index, shown } = levelCard.value;

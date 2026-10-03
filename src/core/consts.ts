@@ -4,7 +4,7 @@ const PX_PER_FOOT = GRID_SIZE / 3;
 const CANDLE_RADIUS = Math.round(10 * PX_PER_FOOT);
 
 export const PLAYER = {
-  speed: 8 / 3 * GRID_SIZE,
+  speed: (8 / 3) * GRID_SIZE,
   collisionRadius: 0.16 * GRID_SIZE,
   cornerAssist: 0.35 * GRID_SIZE,
   slideStepDeg: 10,
@@ -26,7 +26,12 @@ export type ObjectSprite = { file: string; anchor?: { x: number; y: number } };
 export const SPRITES = {
   playerScale: 1.2,
   player: {
-    flashlight: { file: 'sprite/spriteFlashlight.png', anchor: { x: 33.5, y: 32.5 }, light: { x: 53, y: 38 }, lensHalfHeight: 3 },
+    flashlight: {
+      file: 'sprite/spriteFlashlight.png',
+      anchor: { x: 33.5, y: 32.5 },
+      light: { x: 53, y: 38 },
+      lensHalfHeight: 3,
+    },
     candle: { file: 'sprite/spriteCandle.png', anchor: { x: 33.5, y: 32.5 }, light: { x: 47.5, y: 36.5 } },
     empty: { file: 'sprite/sprite.png', anchor: { x: 33.5, y: 32.5 } },
   },
@@ -53,7 +58,11 @@ export const ANIMATION = {
 
 // shared by gameplay and drawing
 export const LIGHT = {
-  falloffStops: [[0, 1], [0.4, 0.9], [1, 0]] as [number, number][], // [t, brightness], interpolated
+  falloffStops: [
+    [0, 1],
+    [0.4, 0.9],
+    [1, 0],
+  ] as [number, number][], // [t, brightness], interpolated
   litThreshold: 0.15,
   edgeGap: 0.04 * GRID_SIZE,
   maxMirrorBounces: 3,
@@ -71,12 +80,12 @@ export const FLAME = {
 
 export const FLASHLIGHT = {
   range: Math.round(45 * PX_PER_FOOT),
-  cone: 20 * Math.PI / 180,
+  cone: (20 * Math.PI) / 180,
   beamCore: 0.6,
   back: 0.28,
   rayCount: 24,
   spill: {
-    cone: 26 * Math.PI / 180,
+    cone: (26 * Math.PI) / 180,
     strength: 0.1,
     range: 0.7,
     rayCount: 16,
@@ -88,7 +97,7 @@ export const RAYS = {
   refineDepth: 5, // bisections where neighbours differ
   maxTraced: 2048,
   softShadowSize: 0.4 * GRID_SIZE,
-  softShadowMax: 20 * Math.PI / 180,
+  softShadowMax: (20 * Math.PI) / 180,
   softShadowSteps: 8,
   edgeMinJump: 0.2 * GRID_SIZE,
 };

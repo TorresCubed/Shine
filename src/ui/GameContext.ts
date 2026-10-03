@@ -1,5 +1,5 @@
-import { createContext } from "preact";
-import { useContext } from "preact/hooks";
+import { createContext } from 'preact';
+import { useContext } from 'preact/hooks';
 
 // What the UI can ask the game to do.
 export type GameActions = {

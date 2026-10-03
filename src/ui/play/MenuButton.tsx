@@ -1,5 +1,5 @@
-import { started, currentScreen, open } from "../store";
-import "./MenuButton.css";
+import { started, currentScreen, open } from '../store';
+import './MenuButton.css';
 
 export const MenuButton = () => {
   if (!started.value || currentScreen.value) return null;
@@ -8,7 +8,10 @@ export const MenuButton = () => {
       className="menu-button"
       title="Menu"
       aria-label="Menu"
-      onClick={(e) => { e.currentTarget.blur(); open('pause'); }}
+      onClick={e => {
+        e.currentTarget.blur();
+        open('pause');
+      }}
     >
       ☰
     </button>

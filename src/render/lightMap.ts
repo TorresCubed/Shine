@@ -1,14 +1,14 @@
-import { polygonsPath } from "../core/util";
-import { fadeProfile, fadeAt } from "../light/rayTracer";
-import type { LightGroup, Penumbra } from "../light/rayTracer";
-import { LIGHT, FLAME, RAYS, LIT_SURFACES } from "../core/consts";
-import { worldCanvas, litCtx, regionCtx, fitToWorld } from "./canvases";
-import { frameTime } from "./frame";
-import { skip } from "./debug";
-import { copyRect } from "./geometry";
-import type { Bounds } from "./geometry";
-import { facesOf, drawFaceLight } from "./faces";
-import { drawBeamHotspot, hotspotReach } from "./hotspot";
+import { polygonsPath } from '../core/util';
+import { fadeProfile, fadeAt } from '../light/rayTracer';
+import type { LightGroup, Penumbra } from '../light/rayTracer';
+import { LIGHT, FLAME, RAYS, LIT_SURFACES } from '../core/consts';
+import { worldCanvas, litCtx, regionCtx, fitToWorld } from './canvases';
+import { frameTime } from './frame';
+import { skip } from './debug';
+import { copyRect } from './geometry';
+import type { Bounds } from './geometry';
+import { facesOf, drawFaceLight } from './faces';
+import { drawBeamHotspot, hotspotReach } from './hotspot';
 
 // How strongly lit walls glow, by the light: a flashlight's beam is intense, a flame's glow soft.
 const WALL_GLOW_FLASHLIGHT = 0.5;
@@ -17,16 +17,24 @@ const WALL_GLOW_FLAME = 0.12;
 // A light group's bounding box, padded for the wall-face band (and a beam's wall hotspot) and
 // clamped to the world, so light work only touches the area a light actually covers.
 export const boundsOf = (group: LightGroup): Bounds => {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const polygon of group.polys) for (const p of polygon) {
-    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const polygon of group.polys)
+    for (const p of polygon) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    }
   const pad = Math.max(LIT_SURFACES.wallPenetration, hotspotReach(group));
-  const x = Math.max(0, Math.floor(minX - pad)), y = Math.max(0, Math.floor(minY - pad));
-  const right = Math.min(worldCanvas.width, Math.ceil(maxX + pad)), bottom = Math.min(worldCanvas.height, Math.ceil(maxY + pad));
+  const x = Math.max(0, Math.floor(minX - pad));
+  const y = Math.max(0, Math.floor(minY - pad));
+  const right = Math.min(worldCanvas.width, Math.ceil(maxX + pad));
+  const bottom = Math.min(worldCanvas.height, Math.ceil(maxY + pad));
   return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
-}
+};
 
 // The light map: each light adds how strongly it lights each spot into litLayer's alpha ('lighter'):
 // its polygons at LIT_SURFACES.floorStrength, its wall and door faces at full, all faded by its
@@ -42,7 +50,7 @@ export const clearLightMaps = (b: Bounds) => {
   litCtx.clearRect(b.x, b.y, b.w, b.h);
   fitToWorld(glowLayer);
   glowCtx.clearRect(b.x, b.y, b.w, b.h);
-}
+};
 
 // A group's polygons onto `target` ('lighter'), for one with fades (a beam, light off a mirror):
 // filled with its falloff (`fill`) on a scratch layer, then dimmed toward its sides by each fade with
@@ -52,7 +60,8 @@ const beamCtx = beamLayer.getContext('2d')!;
 const BEAM_PROFILE_STEPS = 24;
 const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds, fill: CanvasGradient) => {
   fitToWorld(beamLayer);
-  const s = beamCtx, { x, y } = group.origin;
+  const s = beamCtx;
+  const { x, y } = group.origin;
   s.save();
   s.beginPath();
   s.rect(b.x, b.y, b.w, b.h);
@@ -64,7 +73,7 @@ const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds
   s.globalCompositeOperation = 'destination-in';
   for (const fade of group.fades ?? []) {
     const across = s.createConicGradient(fade.axis - fade.half, x, y);
-    const width = Math.min(1 - 2e-4, 2 * fade.half / (Math.PI * 2)); // its share of the full turn
+    const width = Math.min(1 - 2e-4, (2 * fade.half) / (Math.PI * 2)); // its share of the full turn
     for (let i = 0; i <= BEAM_PROFILE_STEPS; i++) {
       const f = i / BEAM_PROFILE_STEPS;
       across.addColorStop(f * width, `rgba(0,0,0,${fadeProfile(Math.abs(2 * f - 1), fade.core)})`);
@@ -75,7 +84,7 @@ const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds
   }
   s.restore();
   copyRect(target, beamLayer, b);
-}
+};
 // A group's soft shadow edges (see addPenumbras) into the light map, with its falloff (`paint`): each
 // fan's slices fade from the shadow's edge (full) to nothing (smoothstep). Slices at the same step
 // share one fill. A group that fades across (a beam, light off a mirror) dims each fan by the fade
@@ -86,14 +95,22 @@ const drawPenumbras = (c: CanvasRenderingContext2D, group: LightGroup, paint: Ca
   if (!fans) return;
   const slices = (list: Penumbra[], j: number) => {
     c.beginPath();
-    for (const { apex, ends } of list) { c.moveTo(apex.x, apex.y); c.lineTo(ends[j].x, ends[j].y); c.lineTo(ends[j + 1].x, ends[j + 1].y); c.closePath(); }
+    for (const { apex, ends } of list) {
+      c.moveTo(apex.x, apex.y);
+      c.lineTo(ends[j].x, ends[j].y);
+      c.lineTo(ends[j + 1].x, ends[j + 1].y);
+      c.closePath();
+    }
   };
   const byFade = new Map<number, Penumbra[]>();
   for (const f of fans) {
-    const level = group.fades?.length ? Math.round(fadeAt(f.apex, group) * PENUMBRA_FADE_LEVELS) / PENUMBRA_FADE_LEVELS : 1;
+    const level = group.fades?.length
+      ? Math.round(fadeAt(f.apex, group) * PENUMBRA_FADE_LEVELS) / PENUMBRA_FADE_LEVELS
+      : 1;
     if (level <= 0) continue;
     const list = byFade.get(level);
-    if (list) list.push(f); else byFade.set(level, [f]);
+    if (list) list.push(f);
+    else byFade.set(level, [f]);
   }
   c.fillStyle = paint;
   for (const [across, list] of byFade) {
@@ -105,7 +122,7 @@ const drawPenumbras = (c: CanvasRenderingContext2D, group: LightGroup, paint: Ca
     }
   }
   c.globalAlpha = 1;
-}
+};
 
 // One light into the light map (and glow map), within `b`. True if it put anything in the glow map.
 export const drawLightMap = (group: LightGroup, b: Bounds) => {
@@ -120,7 +137,8 @@ export const drawLightMap = (group: LightGroup, b: Bounds) => {
   }
   // A flame's drawn reach and brightness dip as it flickers. (Only drawn: the light itself is steady.)
   const dip = group.flame === undefined ? 0 : flicker(frameTime, group.flame);
-  const reach = 1 - FLAME.flickerReach * dip, bright = 1 - FLAME.flickerBrightness * dip;
+  const reach = 1 - FLAME.flickerReach * dip;
+  const bright = 1 - FLAME.flickerBrightness * dip;
   const { x, y } = group.origin;
   const falloff = (strength: number, on = c) => {
     const g = on.createRadialGradient(x, y, 0, x, y, group.radius * reach);
@@ -136,7 +154,8 @@ export const drawLightMap = (group: LightGroup, b: Bounds) => {
   if (!skip.has('soft')) drawPenumbras(c, group, falloff(LIT_SURFACES.floorStrength * strength));
   if (!skip.has('faces')) {
     const glow = group.spill ? 0 : group.beamAxis !== undefined ? WALL_GLOW_FLASHLIGHT : WALL_GLOW_FLAME;
-    const faces = falloff(strength), glowFaces = falloff(1, glowCtx);
+    const faces = falloff(strength);
+    const glowFaces = falloff(1, glowCtx);
     const bands = facesOf(group);
     drawFaceLight(c, bands, faces, v => 1 - 0.45 * (1 - v));
     drawFaceLight(glowCtx, bands, glowFaces, v => glow * v * v);
@@ -146,13 +165,18 @@ export const drawLightMap = (group: LightGroup, b: Bounds) => {
   c.restore();
   glowCtx.restore();
   return glowed;
-}
+};
 
 // How far a flame has dipped at `ms`, 0 to 1: smooth random wobble (random values eased between, a
 // fast and a slower one) plus two slow sines at unrelated rates, so it never quite repeats.
-const hash = (n: number) => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
+const hash = (n: number) => {
+  const s = Math.sin(n * 127.1) * 43758.5453;
+  return s - Math.floor(s);
+};
 const noise = (t: number, seed: number) => {
-  const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
+  const i = Math.floor(t);
+  const f = t - i;
+  const u = f * f * (3 - 2 * f);
   return hash(i + seed * 57.3) * (1 - u) + hash(i + 1 + seed * 57.3) * u;
 };
 const flicker = (ms: number, seed: number) => {
@@ -160,7 +184,7 @@ const flicker = (ms: number, seed: number) => {
   const wobble = noise(t * 5, seed) * 0.75 + noise(t * 10, seed + 11) * 0.25;
   const sway = 0.5 + 0.3 * Math.sin(t * 4.4 + seed) + 0.2 * Math.sin(t * 11.9 + seed * 2.3);
   return Math.min(1, Math.max(0, wobble * 0.65 + sway * 0.35));
-}
+};
 
 // One light's reach as a flat tint, faded by its falloff, onto regionLayer (for the 'bright' view).
 export const drawLightTint = (group: LightGroup, b: Bounds) => {
@@ -176,4 +200,4 @@ export const drawLightTint = (group: LightGroup, b: Bounds) => {
   c.fillStyle = falloff;
   c.fillRect(b.x, b.y, b.w, b.h);
   c.globalCompositeOperation = 'source-over';
-}
+};

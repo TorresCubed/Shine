@@ -9,5 +9,5 @@ export const LINKS: { label: string; url: string }[] = [
 export const CREDITS: { role: string; who: string }[] = [
   { role: 'Design, code and art', who: AUTHOR },
   { role: 'Light', who: 'A hand-written ray tracer: real reflection, soft shadows, no engine' },
-  { role: 'Levels', who: 'Built and checked in its own level editor and solver' },
+  { role: 'Levels', who: 'Built in its own level editor' },
 ];

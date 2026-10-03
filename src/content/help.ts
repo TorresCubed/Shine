@@ -1,11 +1,15 @@
 // `both` when keys and touch say the same.
 export type Hint = { keys: string; touch: string } | { both: string };
 export const LEVEL_HINTS: Record<number, Hint> = {
-  1: { keys: 'WASD or the arrow keys to walk. Find the stairs down.', touch: 'Drag anywhere to walk. Find the stairs down.' },
+  1: {
+    keys: 'WASD or the arrow keys to walk. Find the stairs down.',
+    touch: 'Drag anywhere to walk. Find the stairs down.',
+  },
   4: { both: 'Light a plate and its door opens.' },
   5: {
-    keys: 'Space sets your candle down. It keeps shining, but without it you can only walk where it\'s lit. R restarts.',
-    touch: 'Tap yourself to set your candle down. It keeps shining, but without it you can only walk where it\'s lit. ↻ restarts.',
+    keys: "Space sets your candle down. It keeps shining, but without it you can only walk where it's lit. R restarts.",
+    touch:
+      "Tap yourself to set your candle down. It keeps shining, but without it you can only walk where it's lit. ↻ restarts.",
   },
   6: { both: 'A locked door unlocks while its plate is lit. Walk into it then and it stays open.' },
   7: { both: 'Lamps light their room, and light adds up.' },
@@ -14,9 +18,15 @@ export const LEVEL_HINTS: Record<number, Hint> = {
     touch: 'Tap yourself to pick up the flashlight. You hold one light and pocket the other: ⇄ swaps.',
   },
   9: { keys: 'Standing still, Q and E aim the flashlight.', touch: 'Standing still, ⟲ and ⟳ aim the flashlight.' },
-  16: { keys: 'Mirrors bounce light. Space beside a mirror turns it.', touch: 'Mirrors bounce light. Tap a mirror nearby to turn it.' },
+  16: {
+    keys: 'Mirrors bounce light. Space beside a mirror turns it.',
+    touch: 'Mirrors bounce light. Tap a mirror nearby to turn it.',
+  },
   24: { keys: 'Stand on a lever and press Space to pull it.', touch: 'Tap a lever nearby to pull it.' },
-  25: { keys: 'A wheel turns a mirror somewhere. Space on the wheel turns it.', touch: 'A wheel turns a mirror somewhere. Tap the wheel to turn it.' },
+  25: {
+    keys: 'A wheel turns a mirror somewhere. Space on the wheel turns it.',
+    touch: 'A wheel turns a mirror somewhere. Tap the wheel to turn it.',
+  },
 };
 
 // The whole of the controls, for the How to Play screen.

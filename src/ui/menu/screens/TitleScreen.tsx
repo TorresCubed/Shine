@@ -1,9 +1,9 @@
-import { GAME_TITLE, TAGLINE, AUTHOR } from "../../../content/about";
-import { lastPlayed } from "../../../game/progress";
-import { open } from "../../store";
-import { useGame } from "../../GameContext";
-import { MenuItem } from "../MenuItem";
-import { levelLabel } from "../../levelLabel";
+import { GAME_TITLE, TAGLINE, AUTHOR } from '../../../content/about';
+import { lastPlayed } from '../../../game/progress';
+import { open } from '../../store';
+import { useGame } from '../../GameContext';
+import { MenuItem } from '../MenuItem';
+import { levelLabel } from '../../levelLabel';
 
 export const TitleScreen = () => {
   const { play, levelCount } = useGame();
@@ -17,11 +17,15 @@ export const TitleScreen = () => {
       <div className="menu-list">
         {canContinue ? (
           <>
-            <MenuItem variant="primary" onClick={() => play(last - 1)}>Continue: {levelLabel(last - 1)}</MenuItem>
+            <MenuItem variant="primary" onClick={() => play(last - 1)}>
+              Continue: {levelLabel(last - 1)}
+            </MenuItem>
             <MenuItem onClick={() => play(0)}>Play from the start</MenuItem>
           </>
         ) : (
-          <MenuItem variant="primary" onClick={() => play(0)}>Play</MenuItem>
+          <MenuItem variant="primary" onClick={() => play(0)}>
+            Play
+          </MenuItem>
         )}
         <MenuItem onClick={() => open('levels')}>Levels</MenuItem>
         <MenuItem onClick={() => open('howto')}>How to Play</MenuItem>

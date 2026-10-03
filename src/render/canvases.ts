@@ -1,4 +1,4 @@
-import { FOG, CAMERA } from "../core/consts";
+import { FOG, CAMERA } from '../core/consts';
 
 // The screen: only ever shows the camera's view of worldCanvas, plus on-screen text.
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -34,25 +34,31 @@ export const sizeScreen = () => {
   canvas.height = Math.round(window.innerHeight * pixelRatio);
   canvas.style.width = `${window.innerWidth}px`;
   canvas.style.height = `${window.innerHeight}px`;
-}
+};
 
 // Sizes a scratch layer to the world, if it isn't already (resizing reallocates and clears it).
 export const fitToWorld = (c: HTMLCanvasElement) => {
   if (c.width === worldCanvas.width && c.height === worldCanvas.height) return;
   c.width = worldCanvas.width;
   c.height = worldCanvas.height;
-}
+};
 
 // Sizes every world layer to the level, which also wipes the fog memory.
 export const setWorldSize = (width: number, height: number) => {
-  for (const c of [worldCanvas, regionLayer, litLayer]) { c.width = width; c.height = height; }
-  for (const [c, x] of [[exploredCanvas, exploredCtx], [recentCanvas, recentCtx]] as const) {
+  for (const c of [worldCanvas, regionLayer, litLayer]) {
+    c.width = width;
+    c.height = height;
+  }
+  for (const [c, x] of [
+    [exploredCanvas, exploredCtx],
+    [recentCanvas, recentCtx],
+  ] as const) {
     c.width = Math.ceil(width * FOG.memoryScale);
     c.height = Math.ceil(height * FOG.memoryScale);
     x.fillStyle = c === recentCanvas ? 'white' : 'black'; // nothing remembered (the recent memory is inverted)
     x.fillRect(0, 0, c.width, c.height);
   }
-}
+};
 
 // Zoom (screen px per world px) is whole from 1 up, so art pixels stay square, except exactly fitting
 // the level or mid-pinch (`free`). Below 1 it's continuous, down to fitting the whole level. The most
@@ -64,6 +70,6 @@ export const clampZoom = (zoom: number, free = false) => {
   const z = Math.min(max, Math.max(Math.min(fit, 1), zoom));
   if (free || z < 1 || Math.abs(z - fit) < 1e-6) return z;
   return Math.floor(z);
-}
+};
 // The closest zoom that shows the whole level.
 export const fitZoom = () => clampZoom(exactFit());

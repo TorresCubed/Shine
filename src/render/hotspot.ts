@@ -1,29 +1,42 @@
-import type { LightGroup } from "../light/rayTracer";
-import { GRID_SIZE, FLASHLIGHT } from "../core/consts";
-import { levelWalls } from "../core/state";
-import { insideWalls } from "../core/util";
-import { wallArt, wallMask } from "./walls";
+import type { LightGroup } from '../light/rayTracer';
+import { GRID_SIZE, FLASHLIGHT } from '../core/consts';
+import { level } from '../core/state';
+import { insideWalls } from '../core/util';
+import { wallArt, wallMask } from './walls';
 
 // Where a direct flashlight beam's centre line hits a wall: the point, how far it is, the wall
 // face's direction there, and how squarely the beam hits it (1 = head-on, near 0 = grazing).
 const beamWallHit = (group: LightGroup) => {
   if (group.beamAxis === undefined || group.spill || group.depth !== 0) return null;
-  const o = group.origin, dx = Math.cos(group.beamAxis), dy = Math.sin(group.beamAxis);
+  const o = group.origin;
+  const dx = Math.cos(group.beamAxis);
+  const dy = Math.sin(group.beamAxis);
   for (const poly of group.polys) {
     for (let i = 1; i + 1 < poly.length; i++) {
-      const a = poly[i], b = poly[i + 1];
-      const ex = b.x - a.x, ey = b.y - a.y, denom = dx * ey - dy * ex;
+      const a = poly[i];
+      const b = poly[i + 1];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const denom = dx * ey - dy * ex;
       if (Math.abs(denom) < 1e-9) continue;
-      const wx = a.x - o.x, wy = a.y - o.y;
-      const t = (wx * ey - wy * ex) / denom, u = (wx * dy - wy * dx) / denom;
+      const wx = a.x - o.x;
+      const wy = a.y - o.y;
+      const t = (wx * ey - wy * ex) / denom;
+      const u = (wx * dy - wy * dx) / denom;
       if (t <= 0 || u < 0 || u > 1) continue;
       const len = Math.hypot(ex, ey) || 1;
-      const hit = { x: o.x + dx * t, y: o.y + dy * t, dist: t, faceAngle: Math.atan2(ey, ex), cos: Math.abs(dx * -ey + dy * ex) / len };
-      return insideWalls({ x: hit.x + dx * 2, y: hit.y + dy * 2 }, levelWalls) ? hit : null;
+      const hit = {
+        x: o.x + dx * t,
+        y: o.y + dy * t,
+        dist: t,
+        faceAngle: Math.atan2(ey, ex),
+        cos: Math.abs(dx * -ey + dy * ex) / len,
+      };
+      return insideWalls({ x: hit.x + dx * 2, y: hit.y + dy * 2 }, level.walls) ? hit : null;
     }
   }
   return null;
-}
+};
 
 // Where the beam's centre hits a wall, the wall's art shows through in a soft spot, glowing close up
 // (HOTSPOT_GLOW, fading fast with distance). The spot is the beam's footprint (at least
@@ -40,7 +53,7 @@ const hotspotStretch = (cos: number) => Math.min(HOTSPOT_MAX_STRETCH, 1 / Math.m
 export const hotspotReach = (group: LightGroup) => {
   const hit = beamWallHit(group);
   return hit ? hotspotRadius(hit.dist) * hotspotStretch(hit.cos) : 0;
-}
+};
 
 const hotspotLayer = document.createElement('canvas');
 const hotspotCtx = hotspotLayer.getContext('2d')!;
@@ -51,11 +64,13 @@ export const drawBeamHotspot = (c: CanvasRenderingContext2D, glow: CanvasRenderi
   const near = Math.max(0, 1 - hit.dist / FLASHLIGHT.range);
   const alpha = HOTSPOT_BRIGHTNESS * near;
   if (alpha <= 0) return false;
-  const r = hotspotRadius(hit.dist), stretch = hotspotStretch(hit.cos);
+  const r = hotspotRadius(hit.dist);
+  const stretch = hotspotStretch(hit.cos);
 
   // The spot's soft shape, then the wall art (lined up with the world) kept only inside it.
   const ext = Math.ceil(r * stretch);
-  const ox = Math.floor(hit.x) - ext, oy = Math.floor(hit.y) - ext;
+  const ox = Math.floor(hit.x) - ext;
+  const oy = Math.floor(hit.y) - ext;
   const h = hotspotCtx;
   hotspotLayer.width = hotspotLayer.height = ext * 2;
   h.save();
@@ -82,4 +97,4 @@ export const drawBeamHotspot = (c: CanvasRenderingContext2D, glow: CanvasRenderi
   glow.drawImage(hotspotLayer, ox, oy);
   glow.globalAlpha = 1;
   return true;
-}
+};

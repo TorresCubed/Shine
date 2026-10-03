@@ -1,5 +1,5 @@
-import { BackButton } from "../MenuItem";
-import { Credits } from "../Credits";
+import { BackButton } from '../MenuItem';
+import { Credits } from '../Credits';
 
 export const CreditsScreen = () => (
   <>
@@ -8,4 +8,3 @@ export const CreditsScreen = () => (
     <BackButton />
   </>
 );
-  

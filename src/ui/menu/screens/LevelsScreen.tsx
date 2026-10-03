@@ -1,9 +1,9 @@
-import { useReducer } from "preact/hooks";
-import { isCompleted, isPlayed, completedCount, resetProgress } from "../../../game/progress";
-import { useGame } from "../../GameContext";
-import { cx } from "../../cx";
-import { MenuItem, BackButton } from "../MenuItem";
-import { levelLabel } from "../../levelLabel";
+import { useReducer } from 'preact/hooks';
+import { isCompleted, isPlayed, completedCount, resetProgress } from '../../../game/progress';
+import { useGame } from '../../GameContext';
+import { cx } from '../../cx';
+import { MenuItem, BackButton } from '../MenuItem';
+import { levelLabel } from '../../levelLabel';
 
 export const LevelsScreen = () => {
   const { play, levelCount } = useGame();
@@ -11,7 +11,7 @@ export const LevelsScreen = () => {
   const done = completedCount();
 
   const reset = () => {
-    if (!confirm('Forget which levels you\'ve finished?')) return;
+    if (!confirm("Forget which levels you've finished?")) return;
     resetProgress();
     refresh(0);
   };
@@ -19,7 +19,9 @@ export const LevelsScreen = () => {
   return (
     <>
       <h2>Levels</h2>
-      <p className="muted">{done} of {levelCount} finished</p>
+      <p className="muted">
+        {done} of {levelCount} finished
+      </p>
       <div className="level-grid">
         {Array.from({ length: levelCount }, (_, i) => {
           const n = i + 1;
@@ -34,7 +36,11 @@ export const LevelsScreen = () => {
         })}
       </div>
       <div className="menu-row">
-        {done > 0 && <MenuItem variant="quiet" onClick={reset}>Reset progress</MenuItem>}
+        {done > 0 && (
+          <MenuItem variant="quiet" onClick={reset}>
+            Reset progress
+          </MenuItem>
+        )}
         <BackButton />
       </div>
     </>

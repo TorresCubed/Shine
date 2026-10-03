@@ -8,10 +8,13 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "host": "vite --host --port 80",
-    "share": "tsc && vite build && vite preview --host --port 80"
+    "share": "tsc && vite build && vite preview --host --port 80",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"*.ts\""
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
+    "prettier": "3.9.9",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   },

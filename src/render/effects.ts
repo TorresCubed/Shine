@@ -1,11 +1,12 @@
-import type { Wall } from "../core/types";
-import { GRID_SIZE, DUST } from "../core/consts";
-import { levelWalls, doors, doorLeaves, shines } from "../core/state";
-import { pixelRatio, worldCanvas } from "./canvases";
-import { frameTime } from "./frame";
-import { leafQuad, quadsPath } from "./geometry";
-import type { Bounds } from "./geometry";
-import { screenView } from "./camera";
+import type { Wall } from '../core/types';
+import { GRID_SIZE, DUST } from '../core/consts';
+import { level, shines } from '../core/state';
+import { doorLeaves } from '../core/util';
+import { pixelRatio, worldCanvas } from './canvases';
+import { frameTime } from './frame';
+import { leafQuad, quadsPath } from './geometry';
+import type { Bounds } from './geometry';
+import { screenView } from './camera';
 
 // Game feel: drawing-only touches that make the world react (the light itself stays steady).
 
@@ -13,7 +14,7 @@ import { screenView } from "./camera";
 // even in fog, so you know your light reached its plate, but only for a door you've seen.
 const LOCK_FLASH_MS = 900;
 export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
-  for (const door of doors) {
+  for (const door of level.doors) {
     const t = (frameTime - door.lockFlashAt) / LOCK_FLASH_MS;
     if (door.kind !== 'locked' || !door.everSeen || t < 0 || t >= 1) continue;
     const color = door.triggerOn || door.opened ? '#7dff5a' : '#ff4a3a';
@@ -26,18 +27,18 @@ export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
     c.fill();
     c.restore();
   }
-}
+};
 
 // A shine where a light was picked up or dropped: a warm glow and a four-point glint that flare and
 // fade over SHINE_MS, added on top of everything. Never under SHINE_MIN_CSS_PX on screen, so it
 // still reads zoomed out on a phone.
 const CANDLE_GLOW_RGB = '255, 220, 150';
 const SHINE_MS = 750;
-const SHINE_SIZE = 0.2;       // cells, the long rays' length at their longest
+const SHINE_SIZE = 0.2; // cells, the long rays' length at their longest
 const SHINE_MIN_CSS_PX = 20;
 export const drawShines = (c: CanvasRenderingContext2D) => {
   for (let i = shines.length - 1; i >= 0; i--) if (frameTime - shines[i].at >= SHINE_MS) shines.splice(i, 1);
-  const size = Math.max(SHINE_SIZE * GRID_SIZE, SHINE_MIN_CSS_PX * pixelRatio / screenView.zoom);
+  const size = Math.max(SHINE_SIZE * GRID_SIZE, (SHINE_MIN_CSS_PX * pixelRatio) / screenView.zoom);
   c.save();
   c.globalCompositeOperation = 'lighter';
   for (const s of shines) {
@@ -51,18 +52,22 @@ export const drawShines = (c: CanvasRenderingContext2D) => {
 
     // The glint: thin tapered rays, each a diamond from the centre.
     c.translate(s.x, s.y);
-    c.rotate(t * Math.PI /2);
+    c.rotate((t * Math.PI) / 2);
     c.fillStyle = `rgba(${CANDLE_GLOW_RGB}, ${0.6 * strength})`;
     const ray = (angle: number, len: number, width: number) => {
       c.save();
       c.rotate(angle);
       c.beginPath();
-      c.moveTo(0, -width); c.lineTo(len, 0); c.lineTo(0, width); c.lineTo(-len, 0);
+      c.moveTo(0, -width);
+      c.lineTo(len, 0);
+      c.lineTo(0, width);
+      c.lineTo(-len, 0);
       c.closePath();
       c.fill();
       c.restore();
     };
-    const len = size * strength, width = size * 0.07;
+    const len = size * strength;
+    const width = size * 0.07;
     ray(0, len, width);
     ray(Math.PI / 2, len, width);
     ray(Math.PI / 4, len * 0.45, width * 0.8);
@@ -70,7 +75,7 @@ export const drawShines = (c: CanvasRenderingContext2D) => {
     c.setTransform(1, 0, 0, 1, 0, 0);
   }
   c.restore();
-}
+};
 
 // Dust: motes drifting and twinkling across the level, drawn 'source-atop' the lit area (see draw)
 // so they only show in light. Scattered afresh for each new level.
@@ -78,12 +83,16 @@ type Mote = { x: number; y: number; heading: number; speed: number; phase: numbe
 let dust: Mote[] = [];
 let dustFor: Wall[] | null = null;
 export const updateDust = (dt: number) => {
-  const w = worldCanvas.width, h = worldCanvas.height;
-  if (dustFor !== levelWalls) {
-    dustFor = levelWalls;
-    dust = Array.from({ length: Math.round(w * h / (GRID_SIZE * GRID_SIZE) * DUST.perCell) }, () => ({
-      x: Math.random() * w, y: Math.random() * h, heading: Math.random() * Math.PI * 2,
-      speed: DUST.speed * (0.5 + Math.random()), phase: Math.random() * Math.PI * 2,
+  const w = worldCanvas.width;
+  const h = worldCanvas.height;
+  if (dustFor !== level.walls) {
+    dustFor = level.walls;
+    dust = Array.from({ length: Math.round(((w * h) / (GRID_SIZE * GRID_SIZE)) * DUST.perCell) }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      heading: Math.random() * Math.PI * 2,
+      speed: DUST.speed * (0.5 + Math.random()),
+      phase: Math.random() * Math.PI * 2,
     }));
   }
   for (const m of dust) {
@@ -91,12 +100,12 @@ export const updateDust = (dt: number) => {
     m.x = (m.x + Math.cos(m.heading) * m.speed * dt + w) % w;
     m.y = (m.y + Math.sin(m.heading) * m.speed * dt + h) % h;
   }
-}
+};
 export const drawDust = (c: CanvasRenderingContext2D, b: Bounds) => {
   for (const m of dust) {
     if (m.x < b.x || m.y < b.y || m.x > b.x + b.w || m.y > b.y + b.h) continue;
-    const twinkle = 0.5 + 0.5 * Math.sin(frameTime / DUST.twinkleMs * Math.PI * 2 + m.phase);
+    const twinkle = 0.5 + 0.5 * Math.sin((frameTime / DUST.twinkleMs) * Math.PI * 2 + m.phase);
     c.fillStyle = `rgba(255, 240, 210, ${(DUST.brightness * twinkle).toFixed(3)})`;
     c.fillRect(Math.round(m.x), Math.round(m.y), DUST.size, DUST.size); // whole pixels, like the art
   }
-}
+};

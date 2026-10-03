@@ -1,24 +1,26 @@
-import { cellCenter } from "../core/util";
-import { insideAny, brightnessAt } from "../light/rayTracer";
-import type { LightGroup } from "../light/rayTracer";
-import type { Point } from "../core/types";
-import { SPRITES, PLATE } from "../core/consts";
-import { player, doors, lightState } from "../core/state";
-import { worldCtx } from "./canvases";
-import { frameTime, viewMode } from "./frame";
-import { drawObject, playerSprites } from "./art";
-import type { ObjectKind } from "./art";
-import { drawShines } from "./effects";
+import { cellCenter } from '../core/util';
+import { insideAny, brightnessAt } from '../light/rayTracer';
+import type { LightGroup } from '../light/rayTracer';
+import type { Point } from '../core/types';
+import { SPRITES, PLATE } from '../core/consts';
+import { level, player, lightState } from '../core/state';
+import { worldCtx } from './canvases';
+import { frameTime, viewMode } from './frame';
+import { drawObject, playerSprites } from './art';
+import type { ObjectKind } from './art';
+import { drawShines } from './effects';
 
 // Lit plates in line of sight wake (over PLATE.wakeMs) into their door's kind of active, drawn over
 // the darkness at full art rather than as lit as the floor, so they shine. Going dark they wink
 // out: shift to dead (still shining), flare, and fade into the dark.
 export const drawAwakePlates = (view: Point[][]) => {
   const c = worldCtx;
-  for (const door of doors) {
+  for (const door of level.doors) {
     if (door.kind === 'lever') continue;
-    const at = cellCenter(door.trigger), active: ObjectKind = door.kind === 'locked' ? 'plateActiveLock' : 'plateActiveStd';
-    const wink = frameTime - door.winkAt, winking = wink < PLATE.wink.shiftMs + PLATE.wink.flareMs + PLATE.wink.fadeMs;
+    const at = cellCenter(door.trigger);
+    const active: ObjectKind = door.kind === 'locked' ? 'plateActiveLock' : 'plateActiveStd';
+    const wink = frameTime - door.winkAt;
+    const winking = wink < PLATE.wink.shiftMs + PLATE.wink.flareMs + PLATE.wink.fadeMs;
     if (door.plateWake === 0 && !winking) continue;
     if (viewMode === 'normal' && !insideAny(at, view)) continue;
     if (door.plateWake > 0) {
@@ -39,13 +41,13 @@ export const drawAwakePlates = (view: Point[][]) => {
     drawObject(c, 'plateDead', at.x, at.y, 0, false);
     if (t < PLATE.wink.flareMs) {
       c.globalCompositeOperation = 'lighter';
-      c.globalAlpha = from * PLATE.wink.flare * Math.sin(Math.PI * t / PLATE.wink.flareMs);
+      c.globalAlpha = from * PLATE.wink.flare * Math.sin((Math.PI * t) / PLATE.wink.flareMs);
       drawObject(c, 'plateDead', at.x, at.y, 0, false);
       c.globalCompositeOperation = 'source-over';
     }
   }
   c.globalAlpha = 1;
-}
+};
 
 // Dropped lights in line of sight, lights waiting to be found where they're lit and in sight (at
 // full art, the same as a dropped one, so they stand out), then the player.
@@ -58,7 +60,7 @@ export const drawObjects = (view: Point[][], groups: LightGroup[]) => {
     if (viewMode === 'normal' && !(insideAny(p, view) && brightnessAt(p, groups) > 0)) continue;
     drawObject(worldCtx, p.kind, p.x, p.y, p.aimAngle, false);
   }
-  const spriteKind = lightState.held ?? 'empty';
+  const spriteKind = lightState.held.value ?? 'empty';
   const { anchor } = SPRITES.player[spriteKind];
   worldCtx.save();
   worldCtx.translate(player.x, player.y);
@@ -68,4 +70,4 @@ export const drawObjects = (view: Point[][], groups: LightGroup[]) => {
   worldCtx.drawImage(playerSprites[spriteKind], -anchor.x, -anchor.y);
   worldCtx.restore();
   drawShines(worldCtx);
-}
+};

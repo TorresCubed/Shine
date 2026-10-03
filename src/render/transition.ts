@@ -1,8 +1,8 @@
-import { easeInOut } from "../core/util";
-import { TRANSITION } from "../core/consts";
-import { gameState, input } from "../core/state";
-import { isMenuOpen } from "../ui/store";
-import { canvas, ctx, pixelRatio } from "./canvases";
+import { easeInOut } from '../core/util';
+import { TRANSITION } from '../core/consts';
+import { gameState, input } from '../core/state';
+import { isMenuOpen } from '../ui/store';
+import { canvas, ctx, pixelRatio } from './canvases';
 
 // A value that eases from where it is to a target over some time, then optionally runs something:
 // the screen's darkness and the Level Complete card's opacity, for level transitions.
@@ -13,7 +13,9 @@ export class Fade {
   private ms = 1;
   private then: (() => void) | null = null;
   private value: number;
-  constructor(value = 0) { this.value = value; }
+  constructor(value = 0) {
+    this.value = value;
+  }
 
   // Ease to `to` over `ms`, starting `delay` ms from now, then call `then`.
   go(to: number, ms: number, then: (() => void) | null = null, delay = 0) {
@@ -41,18 +43,19 @@ export class Fade {
     }
     return this.value;
   }
-
 }
 
 export const screenDark = new Fade(1); // 0 clear, 1 black
-export const cardShown = new Fade(0);  // the Level Complete card: 0 hidden, 1 shown
+export const cardShown = new Fade(0); // the Level Complete card: 0 hidden, 1 shown
 
 // The Level Complete card, at `alpha`: the title, then room for a flame (to come: a candle flickering
 // beneath the title), then the prompt.
 const CARD_FLAME_SPACE = 110; // px (CSS) kept clear between the title and the prompt
 const drawLevelComplete = (alpha: number) => {
-  const w = canvas.width / pixelRatio, h = canvas.height / pixelRatio;
-  const titleY = h / 2 - CARD_FLAME_SPACE / 2 - 12, promptY = h / 2 + CARD_FLAME_SPACE / 2 + 24;
+  const w = canvas.width / pixelRatio;
+  const h = canvas.height / pixelRatio;
+  const titleY = h / 2 - CARD_FLAME_SPACE / 2 - 12;
+  const promptY = h / 2 + CARD_FLAME_SPACE / 2 + 24;
   ctx.globalAlpha = alpha;
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f5c542';
@@ -60,26 +63,28 @@ const drawLevelComplete = (alpha: number) => {
   ctx.fillText('Level Complete', w / 2, titleY);
   ctx.fillStyle = '#ccc';
   ctx.font = '16px sans-serif';
-  ctx.fillText(input.touch ? 'Tap to continue' : 'Press Enter to continue', w / 2, promptY);
+  ctx.fillText(input.touch.value ? 'Tap to continue' : 'Press Enter to continue', w / 2, promptY);
   ctx.textAlign = 'start';
   ctx.globalAlpha = 1;
-}
+};
 
 // Level transitions: once you reach the exit, the world dims and the card fades in (see main.ts for
 // leaving and arriving). Then the screen's darkness and the card go over everything.
 let winShown = false;
 export const drawTransition = (now: number) => {
-  if (gameState.status === 'won' && !winShown) {
+  if (gameState.status.value === 'won' && !winShown) {
     winShown = true;
     screenDark.go(TRANSITION.winDim, TRANSITION.winFadeMs);
     cardShown.go(1, TRANSITION.cardFadeMs, null, TRANSITION.winFadeMs / 2);
   }
-  if (gameState.status !== 'won') winShown = false;
-  const w = canvas.width / pixelRatio, h = canvas.height / pixelRatio;
-  const dark = screenDark.valueAt(now), card = cardShown.valueAt(now);
+  if (gameState.status.value !== 'won') winShown = false;
+  const w = canvas.width / pixelRatio;
+  const h = canvas.height / pixelRatio;
+  const dark = screenDark.valueAt(now);
+  const card = cardShown.valueAt(now);
   if (dark > 0) {
     ctx.fillStyle = `rgba(0, 0, 0, ${dark.toFixed(3)})`;
     ctx.fillRect(0, 0, w, h);
   }
   if (card > 0 && !isMenuOpen()) drawLevelComplete(card); // (not through a menu: it shows through)
-}
+};

@@ -1,6 +1,6 @@
-import type { ComponentChildren } from "preact";
-import { goBack } from "../store";
-import { cx } from "../cx";
+import type { ComponentChildren } from 'preact';
+import { goBack } from '../store';
+import { cx } from '../cx';
 
 type Props = {
   onClick: () => void;
@@ -16,4 +16,8 @@ export const MenuItem = ({ onClick, variant, className, title, children }: Props
   </button>
 );
 
-export const BackButton = () => <MenuItem className="menu-back" onClick={goBack}>Back</MenuItem>;
+export const BackButton = () => (
+  <MenuItem className="menu-back" onClick={goBack}>
+    Back
+  </MenuItem>
+);

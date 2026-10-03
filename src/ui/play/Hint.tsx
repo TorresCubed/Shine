@@ -1,6 +1,6 @@
-import { hint } from "../store";
-import { cx } from "../cx";
-import "./Hint.css";
+import { hint } from '../store';
+import { cx } from '../cx';
+import './Hint.css';
 
 // Always mounted, so it fades out with its text still showing.
 export const Hint = () => {

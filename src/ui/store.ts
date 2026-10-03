@@ -1,7 +1,7 @@
-import { signal, computed } from "@preact/signals";
-import type { Hint } from "../content/help";
-import { input } from "../core/state";
-import { showSplash } from "./splash/state";
+import { signal, computed } from '@preact/signals';
+import type { Hint } from '../content/help';
+import { input } from '../core/state';
+import { showSplash } from './splash/state';
 
 // UI state the game drives from outside the components (main.ts, renderer, touch input).
 
@@ -14,15 +14,22 @@ export const isMenuOpen = () => stack.value.length > 0;
 
 // Set once a level is started from the menus: the in-play UI shows from then on.
 export const started = signal(false);
-export const markStarted = () => { started.value = true; };
+export const markStarted = () => {
+  started.value = true;
+};
 
 export const open = (screen: Screen) => {
   hideHint();
   if (screen === 'title') showSplash();
   stack.value = [...stack.value, screen];
 };
-export const close = () => { stack.value = []; };
-export const openFresh = (screen: Screen) => { close(); open(screen); };
+export const close = () => {
+  stack.value = [];
+};
+export const openFresh = (screen: Screen) => {
+  close();
+  open(screen);
+};
 
 export const goBack = () => {
   const screen = currentScreen.value;
@@ -41,7 +48,7 @@ export const hint = signal({ text: '', touch: false, shown: false });
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 export const showHint = (h: Hint, ms = 12000) => {
   // Touch is certain once touched; before that, guess from the pointer.
-  const touch = input.touch || matchMedia('(pointer: coarse)').matches;
+  const touch = input.touch.value || matchMedia('(pointer: coarse)').matches;
   const text = 'both' in h ? h.both : touch ? h.touch : h.keys;
   hint.value = { text, touch, shown: true };
   clearTimeout(hintTimer);
@@ -58,7 +65,9 @@ let cardTimer: ReturnType<typeof setTimeout> | undefined;
 export const showLevelCard = (index: number) => {
   levelCard.value = { index, shown: true };
   clearTimeout(cardTimer);
-  cardTimer = setTimeout(() => { levelCard.value = { ...levelCard.value, shown: false }; }, 3500);
+  cardTimer = setTimeout(() => {
+    levelCard.value = { ...levelCard.value, shown: false };
+  }, 3500);
 };
 
 // The on-screen stick, in CSS px: where it went down, and the knob's offset from there.

@@ -1,24 +1,24 @@
-import { tryMove, updateAim, updateMirrors } from "../game/player";
-import { updateDoors } from "../game/doors";
-import { getScene } from "../light/scene";
-import type { LightGroup } from "../light/rayTracer";
-import type { LightKind } from "../core/types";
-import { TARGET_FPS, FOG, CAMERA } from "../core/consts";
-import { levelWalls, doors, allDoorLeaves, mirrors, lightState, camera } from "../core/state";
-import { canvas, ctx, pixelRatio, worldCtx, litLayer, litCtx, regionLayer } from "./canvases";
-import { setFrameTime, viewMode } from "./frame";
-import { skip, perfMark, perfFrameStart, perfFrameEnd, countFrame, drawHud } from "./debug";
-import { intersect, unionBounds, copyRect } from "./geometry";
-import type { Bounds } from "./geometry";
-import { castLights } from "./lights";
-import { computeView, drawViewMask, mirrorSeen } from "./sight";
-import { fadeMemory, rememberSeen, rememberEverything, getMemoryMask } from "./memory";
-import { boundsOf, clearLightMaps, drawLightMap, drawLightTint, glowLayer, glowCtx } from "./lightMap";
-import { ensureDimFloor, dimFloorCanvas, dimMarksCanvas, ensureLitArt, litArt, drawBrightLevel } from "./floor";
-import { drawLockFlashes, updateDust, drawDust } from "./effects";
-import { drawAwakePlates, drawObjects } from "./objects";
-import { updateCamera, visibleRect, drawToScreen } from "./camera";
-import { drawTransition } from "./transition";
+import { tryMove, updateAim, updateMirrors } from '../game/player';
+import { updateDoors } from '../game/doors';
+import { getScene } from '../light/scene';
+import type { LightGroup } from '../light/rayTracer';
+import type { LightKind } from '../core/types';
+import { TARGET_FPS, FOG, CAMERA } from '../core/consts';
+import { level, allDoorLeaves, lightState, camera } from '../core/state';
+import { canvas, ctx, pixelRatio, worldCtx, litLayer, litCtx, regionLayer } from './canvases';
+import { setFrameTime, viewMode } from './frame';
+import { skip, perfMark, perfFrameStart, perfFrameEnd, countFrame, drawHud } from './debug';
+import { intersect, unionBounds, copyRect } from './geometry';
+import type { Bounds } from './geometry';
+import { castLights } from './lights';
+import { computeView, drawViewMask, mirrorSeen } from './sight';
+import { fadeMemory, rememberSeen, rememberEverything, getMemoryMask } from './memory';
+import { boundsOf, clearLightMaps, drawLightMap, drawLightTint, glowLayer, glowCtx } from './lightMap';
+import { ensureDimFloor, dimFloorCanvas, dimMarksCanvas, ensureLitArt, litArt, drawBrightLevel } from './floor';
+import { drawLockFlashes, updateDust, drawDust } from './effects';
+import { drawAwakePlates, drawObjects } from './objects';
+import { updateCamera, visibleRect, drawToScreen } from './camera';
+import { drawTransition } from './transition';
 
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 let lastFrameTime = -Infinity;
@@ -40,7 +40,7 @@ export const draw = (now: number) => {
   countFrame(now);
 
   perfFrameStart();
-  const walkAngle = tryMove(dt, litGroupsHeld === lightState.held ? litGroups : []);
+  const walkAngle = tryMove(dt, litGroupsHeld === lightState.held.value ? litGroups : []);
   updateAim(dt, walkAngle);
   // Walking brings a panned view back to you.
   if (walkAngle !== null && !camera.pinching) {
@@ -52,21 +52,25 @@ export const draw = (now: number) => {
   updateDust(dt);
   perfMark('move');
 
-  const scene = getScene(levelWalls, mirrors, allDoorLeaves());
+  const scene = getScene(level.walls, level.mirrors, allDoorLeaves());
   const { groups, rayCount, lightCount } = castLights(scene, now);
   perfMark('cast');
   litGroups = groups;
-  litGroupsHeld = lightState.held;
+  litGroupsHeld = lightState.held.value;
 
   // Light exists everywhere it reaches (the fear rule and plates use all of it), but the player
   // only sees, and remembers, what's in line of sight.
   const view = computeView(scene);
   perfMark('view');
   updateDoors(groups, view, dt);
-  for (const m of mirrors) if (mirrorSeen(m, groups, view)) { m.seenStep = m.shownStep; m.everSeen = true; }
+  for (const m of level.mirrors)
+    if (mirrorSeen(m, groups, view)) {
+      m.seenStep = m.shownStep;
+      m.everSeen = true;
+    }
   if (viewMode !== 'normal') {
-    for (const d of doors) d.seenOpenAmount = d.openAmount;
-    for (const m of mirrors) m.seenStep = m.shownStep;
+    for (const d of level.doors) d.seenOpenAmount = d.openAmount;
+    for (const m of level.mirrors) m.seenStep = m.shownStep;
   }
   perfMark('logic');
   fadeMemory(dt);
@@ -88,7 +92,12 @@ export const draw = (now: number) => {
     // Everything fully lit, and each light's reach as a tinted overlay, fading with its falloff.
     drawBrightLevel(worldCtx);
     litCtx.globalCompositeOperation = 'lighter';
-    groups.forEach((g, i) => { if (onScreen[i]) { drawLightTint(g, bounds[i]); copyRect(litCtx, regionLayer, bounds[i]); } });
+    groups.forEach((g, i) => {
+      if (onScreen[i]) {
+        drawLightTint(g, bounds[i]);
+        copyRect(litCtx, regionLayer, bounds[i]);
+      }
+    });
     litCtx.globalCompositeOperation = 'source-over';
     worldCtx.globalAlpha = 0.55;
     copyRect(worldCtx, litLayer, litBounds);
@@ -119,7 +128,10 @@ export const draw = (now: number) => {
     // Lit regions are added together ('lighter'), since overlapping light adds, then cut down to the
     // line of sight (in the game) and drawn over the remembered floor.
     litCtx.globalCompositeOperation = 'lighter';
-    if (!skip.has('lit')) groups.forEach((g, i) => { if (onScreen[i] && drawLightMap(g, bounds[i])) glowDrawn = true; });
+    if (!skip.has('lit'))
+      groups.forEach((g, i) => {
+        if (onScreen[i] && drawLightMap(g, bounds[i])) glowDrawn = true;
+      });
     perfMark('lit');
     if (viewMode === 'normal' && anyLit && !skip.has('sight')) {
       // (Kept to the lit area: 'destination-in' would otherwise clear the whole canvas outside it.)
@@ -153,16 +165,26 @@ export const draw = (now: number) => {
   perfMark('objects');
 
   if (!skip.has('screen')) drawToScreen();
-  else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0); }
+  else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  }
   drawTransition(now);
   perfMark('screen');
   perfFrameEnd();
   drawHud(rayCount, lightCount, groups.length);
-}
+};
 
 // Composites `from` into `c` with `op`, clipped to `b` (the 'source-in' and 'destination-in' ops
 // would otherwise clear the whole canvas outside it), then runs `more` under the same clip.
-const layInto = (c: CanvasRenderingContext2D, from: HTMLCanvasElement, op: GlobalCompositeOperation, b: Bounds, more?: () => void) => {
+const layInto = (
+  c: CanvasRenderingContext2D,
+  from: HTMLCanvasElement,
+  op: GlobalCompositeOperation,
+  b: Bounds,
+  more?: () => void,
+) => {
   c.save();
   c.beginPath();
   c.rect(b.x, b.y, b.w, b.h);
@@ -171,4 +193,4 @@ const layInto = (c: CanvasRenderingContext2D, from: HTMLCanvasElement, op: Globa
   copyRect(c, from, b);
   more?.();
   c.restore();
-}
+};

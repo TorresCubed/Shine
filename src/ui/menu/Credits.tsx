@@ -1,5 +1,5 @@
-import { Fragment } from "preact";
-import { CREDITS, LINKS } from "../../content/about";
+import { Fragment } from 'preact';
+import { CREDITS, LINKS } from '../../content/about';
 
 const ALL_LINKS = [...LINKS, { label: 'Level editor', url: 'editor.html' }].filter(l => l.url);
 

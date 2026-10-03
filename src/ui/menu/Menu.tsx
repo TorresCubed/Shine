@@ -1,14 +1,14 @@
-import { useEffect, useRef } from "preact/hooks";
-import type { JSX } from "preact";
-import { currentScreen, goBack } from "../store";
-import type { Screen } from "../store";
-import { TitleScreen } from "./screens/TitleScreen";
-import { LevelsScreen } from "./screens/LevelsScreen";
-import { HowToScreen } from "./screens/HowToScreen";
-import { CreditsScreen } from "./screens/CreditsScreen";
-import { PauseScreen } from "./screens/PauseScreen";
-import { EndingScreen } from "./screens/EndingScreen";
-import "./Menu.css";
+import { useEffect, useRef } from 'preact/hooks';
+import type { JSX } from 'preact';
+import { currentScreen, goBack } from '../store';
+import type { Screen } from '../store';
+import { TitleScreen } from './screens/TitleScreen';
+import { LevelsScreen } from './screens/LevelsScreen';
+import { HowToScreen } from './screens/HowToScreen';
+import { CreditsScreen } from './screens/CreditsScreen';
+import { PauseScreen } from './screens/PauseScreen';
+import { EndingScreen } from './screens/EndingScreen';
+import './Menu.css';
 
 const SCREENS: Record<Screen, () => JSX.Element> = {
   title: TitleScreen,
