@@ -1,12 +1,11 @@
 import type { LightGroup } from '../light/rayTracer';
 import type { DoorState, Point } from '../core/types';
-import { brightnessAt, insideAny } from '../light/rayTracer';
+import { brightnessAt, insideAny } from '../light/brightness';
 import { LIGHT, DOOR, PLATE } from '../core/consts';
 import { level, player } from '../core/state';
 import { cellCenter, doorLeaves, footprintCells, normalOf, sameCell } from '../core/util';
 
-// The player sees the door if it's lit and in line of sight: just off either face of an edge it
-// closes, or halfway along a leaf where it is now.
+// Seen if lit and in sight: just off either side of its closed edge, or mid-leaf where it is now.
 const isSeen = (door: DoorState, groups: LightGroup[], view: Point[][]) => {
   const closed = doorLeaves(door, 0);
   const now = doorLeaves(door, door.openAmount);
@@ -29,12 +28,11 @@ export const tryOpenLockedDoor = (door: DoorState) => {
   if (door.kind === 'locked' && door.triggerOn) door.opened = true;
 };
 
-// The openAmount that swings a leaf DOOR.creak of the way (the swing is eased: see doorLeaves).
+// The openAmount that swings a leaf DOOR.creak of the way (the swing is eased).
 const CREAK_AMOUNT = DOOR.creak <= 0.5 ? Math.cbrt(DOOR.creak / 4) : 1 - Math.cbrt((1 - DOOR.creak) / 4);
 
-// Light doors follow their plate, lever doors their lever, and locked doors stay open once opened.
-// A door never swings into you: while you're in a cell a leaf swings through, it stays where it is,
-// so it won't close on you or open into you. `dt` in seconds.
+// Light doors follow their plate, lever doors their lever; locked doors stay open once opened. A door
+// holds still while you're in a cell it swings through, so it never swings into you.
 export const updateDoors = (groups: LightGroup[], view: Point[][], dt: number) => {
   const step = (dt * 1000) / DOOR.openMs;
   const underPlayer = footprintCells(player.x, player.y);
@@ -72,7 +70,7 @@ export const updateDoors = (groups: LightGroup[], view: Point[][], dt: number) =
       }
       door.wasUnlocked = unlocked;
     }
-    // Seen now, or seen before and doing something (swinging, locking, unlocking): shown as it is.
+    // Seen now, or seen before and doing something: shown as it is.
     const seen = isSeen(door, groups, view);
     if (seen) door.everSeen = true;
     door.showWhole = seen || (door.everSeen && active);

@@ -1,5 +1,5 @@
 import { polygonsPath } from '../core/util';
-import { fadeProfile, fadeAt } from '../light/rayTracer';
+import { fadeProfile, fadeAt } from '../light/brightness';
 import type { LightGroup, Penumbra } from '../light/rayTracer';
 import { LIGHT, FLAME, RAYS, LIT_SURFACES } from '../core/consts';
 import { worldCanvas, litCtx, regionCtx, fitToWorld } from './canvases';
@@ -10,12 +10,11 @@ import type { Bounds } from './geometry';
 import { facesOf, drawFaceLight } from './faces';
 import { drawBeamHotspot, hotspotReach } from './hotspot';
 
-// How strongly lit walls glow, by the light: a flashlight's beam is intense, a flame's glow soft.
+// How brightly lit walls glow: a beam strongly, a flame softly.
 const WALL_GLOW_FLASHLIGHT = 0.5;
 const WALL_GLOW_FLAME = 0.12;
 
-// A light group's bounding box, padded for the wall-face band (and a beam's wall hotspot) and
-// clamped to the world, so light work only touches the area a light actually covers.
+// A group's bounding box, padded for its face band and hotspot, clamped to the world.
 export const boundsOf = (group: LightGroup): Bounds => {
   let minX = Infinity;
   let minY = Infinity;
@@ -45,16 +44,14 @@ export const boundsOf = (group: LightGroup): Bounds => {
 export const glowLayer = document.createElement('canvas');
 export const glowCtx = glowLayer.getContext('2d')!;
 
-// Clears both maps within `b`, ready for this frame's lights.
 export const clearLightMaps = (b: Bounds) => {
   litCtx.clearRect(b.x, b.y, b.w, b.h);
   fitToWorld(glowLayer);
   glowCtx.clearRect(b.x, b.y, b.w, b.h);
 };
 
-// A group's polygons onto `target` ('lighter'), for one with fades (a beam, light off a mirror):
-// filled with its falloff (`fill`) on a scratch layer, then dimmed toward its sides by each fade with
-// a conic gradient round its source, since a canvas can't multiply two gradients in one fill.
+// Fills a faded group (a beam, light off a mirror) onto `target`: its falloff on a scratch layer, then
+// each fade as a conic gradient, since a canvas can't multiply two gradients in one fill.
 const beamLayer = document.createElement('canvas');
 const beamCtx = beamLayer.getContext('2d')!;
 const BEAM_PROFILE_STEPS = 24;
@@ -85,10 +82,8 @@ const fillBeam = (target: CanvasRenderingContext2D, group: LightGroup, b: Bounds
   s.restore();
   copyRect(target, beamLayer, b);
 };
-// A group's soft shadow edges (see addPenumbras) into the light map, with its falloff (`paint`): each
-// fan's slices fade from the shadow's edge (full) to nothing (smoothstep). Slices at the same step
-// share one fill. A group that fades across (a beam, light off a mirror) dims each fan by the fade
-// where its corner is, rounded to PENUMBRA_FADE_LEVELS so fans still share fills.
+// A group's soft shadow edges, each fan fading out across its slices. Slices at the same step share a
+// fill; a faded group dims each fan by its fade, rounded so fans still share fills.
 const PENUMBRA_FADE_LEVELS = 4;
 const drawPenumbras = (c: CanvasRenderingContext2D, group: LightGroup, paint: CanvasGradient) => {
   const fans = group.penumbras;
@@ -135,7 +130,7 @@ export const drawLightMap = (group: LightGroup, b: Bounds) => {
     x.clip();
     x.globalCompositeOperation = 'lighter';
   }
-  // A flame's drawn reach and brightness dip as it flickers. (Only drawn: the light itself is steady.)
+  // A flame's drawn reach and brightness dip as it flickers (drawn only).
   const dip = group.flame === undefined ? 0 : flicker(frameTime, group.flame);
   const reach = 1 - FLAME.flickerReach * dip;
   const bright = 1 - FLAME.flickerBrightness * dip;
@@ -167,8 +162,7 @@ export const drawLightMap = (group: LightGroup, b: Bounds) => {
   return glowed;
 };
 
-// How far a flame has dipped at `ms`, 0 to 1: smooth random wobble (random values eased between, a
-// fast and a slower one) plus two slow sines at unrelated rates, so it never quite repeats.
+// How far a flame has dipped at `ms` (0-1): eased random wobble plus two slow sines, so it never repeats.
 const hash = (n: number) => {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return s - Math.floor(s);

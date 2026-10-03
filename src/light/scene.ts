@@ -13,9 +13,7 @@ const wallEdges = (w: Wall): Segment[] => {
   ];
 };
 
-// Walls, mirrors, and other light-blocking segments (door leaves), which absorb light like walls.
-// Rebuilt only when the geometry changes (doors swinging, mirrors turning), detected by a cheap
-// content fingerprint.
+// Walls, mirrors and door leaves as one segment list, rebuilt only when the geometry changes.
 let cachedFingerprint = '';
 let cachedScene: Scene = { count: 0, coords: new Float64Array(0), mirrorIndex: new Int32Array(0), mirrorCount: 0 };
 

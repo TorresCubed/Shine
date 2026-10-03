@@ -1,5 +1,5 @@
 import { cellCenter } from '../core/util';
-import { insideAny, brightnessAt } from '../light/rayTracer';
+import { insideAny, brightnessAt } from '../light/brightness';
 import type { LightGroup } from '../light/rayTracer';
 import type { Point } from '../core/types';
 import { SPRITES, PLATE } from '../core/consts';
@@ -10,9 +10,8 @@ import { drawObject, playerSprites } from './art';
 import type { ObjectKind } from './art';
 import { drawShines } from './effects';
 
-// Lit plates in line of sight wake (over PLATE.wakeMs) into their door's kind of active, drawn over
-// the darkness at full art rather than as lit as the floor, so they shine. Going dark they wink
-// out: shift to dead (still shining), flare, and fade into the dark.
+// Lit plates in sight wake (over PLATE.wakeMs) into their active art, drawn over the dark so they
+// shine. Going dark, they shift to dead, flare and fade.
 export const drawAwakePlates = (view: Point[][]) => {
   const c = worldCtx;
   for (const door of level.doors) {
@@ -49,8 +48,7 @@ export const drawAwakePlates = (view: Point[][]) => {
   c.globalAlpha = 1;
 };
 
-// Dropped lights in line of sight, lights waiting to be found where they're lit and in sight (at
-// full art, the same as a dropped one, so they stand out), then the player.
+// Dropped lights in sight, unfound ones lit and in sight (at full art, to stand out), then the player.
 export const drawObjects = (view: Point[][], groups: LightGroup[]) => {
   for (const d of lightState.dropped) {
     if (viewMode === 'normal' && !insideAny(d, view)) continue;

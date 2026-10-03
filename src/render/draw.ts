@@ -1,4 +1,6 @@
-import { tryMove, updateAim, updateMirrors } from '../game/player';
+import { tryMove } from '../game/movement';
+import { updateAim } from '../game/aim';
+import { updateMirrors } from '../game/mirrors';
 import { updateDoors } from '../game/doors';
 import { getScene } from '../light/scene';
 import type { LightGroup } from '../light/rayTracer';
@@ -23,15 +25,14 @@ import { drawTransition } from './transition';
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 let lastFrameTime = -Infinity;
 
-// Last frame's light, for the fear rule on the next move, and what was held when it was cast. If the
-// held light has changed since (e.g. just dropped), that light is stale, so none is used.
+// Last frame's light, for the fear rule, unless the held light has changed since (e.g. just dropped).
 let litGroups: LightGroup[] = [];
 let litGroupsHeld: LightKind | null = null;
 
 export const draw = (now: number) => {
   requestAnimationFrame(draw);
 
-  // Frame cap. The 1ms slack stops rAF timing jitter from skipping a frame we wanted.
+  // Frame cap, with 1ms slack for rAF jitter.
   const elapsed = now - lastFrameTime;
   if (elapsed < FRAME_INTERVAL - 1) return;
   const dt = Math.min(elapsed, 100) / 1000; // clamped so a backgrounded tab doesn't teleport the player
@@ -58,8 +59,7 @@ export const draw = (now: number) => {
   litGroups = groups;
   litGroupsHeld = lightState.held.value;
 
-  // Light exists everywhere it reaches (the fear rule and plates use all of it), but the player
-  // only sees, and remembers, what's in line of sight.
+  // Light reaches everywhere for play, but you only see and remember what's in line of sight.
   const view = computeView(scene);
   perfMark('view');
   updateDoors(groups, view, dt);
@@ -81,7 +81,7 @@ export const draw = (now: number) => {
   updateCamera(dt);
   const vis = visibleRect();
 
-  // Lights are only drawn where they're on screen (they still light the whole level for play).
+  // Only lights on screen are drawn.
   const bounds = groups.map(g => intersect(boundsOf(g), vis));
   const onScreen = groups.map((_, i) => bounds[i].w > 0 && bounds[i].h > 0);
   const litBounds = bounds.filter((_, i) => onScreen[i]).reduce(unionBounds, { x: vis.x, y: vis.y, w: 0, h: 0 });
@@ -89,7 +89,7 @@ export const draw = (now: number) => {
   clearLightMaps(litBounds);
   let glowDrawn = false; // anything in the glow map this frame
   if (viewMode === 'bright') {
-    // Everything fully lit, and each light's reach as a tinted overlay, fading with its falloff.
+    // Everything lit, with each light's reach as a tint.
     drawBrightLevel(worldCtx);
     litCtx.globalCompositeOperation = 'lighter';
     groups.forEach((g, i) => {
@@ -108,7 +108,6 @@ export const draw = (now: number) => {
     // view always shows the fog floor.
     const fog = viewMode === 'fog' ? FOG.floorBrightness : FOG.visibility;
     ensureDimFloor();
-    // (Only the part on screen: the rest of the world canvas is never shown.)
     const S = FOG.memoryScale;
     worldCtx.fillStyle = 'black';
     worldCtx.fillRect(vis.x, vis.y, vis.w, vis.h);
@@ -125,8 +124,7 @@ export const draw = (now: number) => {
     worldCtx.globalCompositeOperation = 'source-over';
     perfMark('fog');
 
-    // Lit regions are added together ('lighter'), since overlapping light adds, then cut down to the
-    // line of sight (in the game) and drawn over the remembered floor.
+    // Lights add ('lighter'), then are cut to the line of sight and laid over the remembered floor.
     litCtx.globalCompositeOperation = 'lighter';
     if (!skip.has('lit'))
       groups.forEach((g, i) => {

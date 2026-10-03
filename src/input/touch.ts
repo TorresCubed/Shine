@@ -3,14 +3,12 @@ import { stick, input, camera } from '../core/state';
 import { stickView } from '../ui/store';
 import { clampZoom, fitZoom, pixelRatio } from '../render/canvases';
 
-// Touch (and mouse) input on the game canvas. A press lifted within INPUT.tapSlop is a tap; dragged
-// further it becomes the stick, centred where it went down. One finger can hold the stick while
-// another taps; two put down together pinch-zoom and pan, as a right or middle mouse drag pans.
-// The first touch sets input.touch, which shows the on-screen buttons.
+// Touch and mouse on the game canvas. A press lifted within INPUT.tapSlop is a tap; dragged further it
+// becomes the stick, centred where it went down. Two fingers down together pinch-zoom and pan, as a
+// right or middle mouse drag pans. The first touch sets input.touch, showing the on-screen buttons.
 
 export const initTouchControls = (canvas: HTMLCanvasElement, onTap: (clientX: number, clientY: number) => void) => {
-  // Presses on the canvas: each pointer is a possible tap until it drags; at most one is the stick.
-  // Two fingers down together (with no stick held) are a pinch/pan gesture instead.
+  // Each press is a possible tap until it drags; at most one is the stick.
   const presses = new Map<number, { x: number; y: number }>();
   let stickId: number | null = null;
   let centre = { x: 0, y: 0 };
@@ -21,8 +19,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, onTap: (clientX: nu
     const [a, b] = [...fingers.values()];
     return { mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
   };
-  // Pinch zooms about the point between your fingers (it stays under them), and moving both fingers
-  // drags the view: the world point under the old midpoint ends up under the new one.
+  // Pinch zooms about the point between your fingers, and moving them drags the view.
   const moveGesture = (id: number, x: number, y: number) => {
     const g = gesture!;
     g.fingers.set(id, { x, y });
@@ -38,7 +35,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, onTap: (clientX: nu
     g.mid = mid;
     g.dist = dist;
   };
-  // Letting go settles on a whole zoom (so the art is crisp), or back on fitting the level if close.
+  // Letting go settles on a whole zoom, or on fitting the level if close.
   const endGesture = () => {
     gesture = null;
     camera.pinching = false;
@@ -53,7 +50,7 @@ export const initTouchControls = (canvas: HTMLCanvasElement, onTap: (clientX: nu
     let dy = y - centre.y;
     const len = Math.hypot(dx, dy);
     if (len > INPUT.stick.radius) {
-      // Dragged past the edge: the ring follows the thumb, so turning round never needs a long drag back.
+      // Past the edge, the ring follows the thumb, so turning round needs no long drag back.
       centre = { x: x - (dx / len) * INPUT.stick.radius, y: y - (dy / len) * INPUT.stick.radius };
       dx = x - centre.x;
       dy = y - centre.y;

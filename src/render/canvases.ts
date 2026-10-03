@@ -4,16 +4,14 @@ import { FOG, CAMERA } from '../core/consts';
 export const canvas = document.getElementById('game') as HTMLCanvasElement;
 export const ctx = canvas.getContext('2d')!;
 
-// The whole level, drawn at 1px per world pixel. Everything below is sized to the level too, so
-// levels can be bigger than the window.
+// The whole level at 1px per world px (it can be bigger than the window). The layers below match it.
 export const worldCanvas = document.createElement('canvas');
 export const worldCtx = worldCanvas.getContext('2d')!;
 
 // Fog memory: a low-res grayscale mask, each pixel the brightest that spot has ever been seen lit.
 export const exploredCanvas = document.createElement('canvas');
 export const exploredCtx = exploredCanvas.getContext('2d')!;
-// The same, but fading while out of sight (see FOG.fadeS): how recently each spot was seen. Kept
-// inverted (black = just seen, white = forgotten), so fading is exact (see memory.ts fadeMemory).
+// The same, fading while out of sight (FOG.fadeS), kept inverted (black = just seen) so fading is exact.
 export const recentCanvas = document.createElement('canvas');
 export const recentCtx = recentCanvas.getContext('2d')!;
 
@@ -25,8 +23,7 @@ export const litCtx = litLayer.getContext('2d')!;
 export const regionLayer = document.createElement('canvas');
 export const regionCtx = regionLayer.getContext('2d')!;
 
-// The canvas has one pixel per physical screen pixel (so the browser never rescales it, e.g. with
-// Windows display scaling), and is shown at the window's size.
+// One canvas pixel per physical pixel, so the browser never rescales it (e.g. Windows display scaling).
 export let pixelRatio = 1;
 export const sizeScreen = () => {
   pixelRatio = window.devicePixelRatio || 1;

@@ -8,10 +8,10 @@ import { leafQuad, quadsPath } from './geometry';
 import type { Bounds } from './geometry';
 import { screenView } from './camera';
 
-// Game feel: drawing-only touches that make the world react (the light itself stays steady).
+// Drawing-only touches that make the world react.
 
-// A locked door that unlocks (or locks again) flashes green (or red) over LOCK_FLASH_MS. It shows
-// even in fog, so you know your light reached its plate, but only for a door you've seen.
+// A locked door that unlocks (or re-locks) flashes green (or red), even in fog, so you know your light
+// reached its plate, but only once you've seen the door.
 const LOCK_FLASH_MS = 900;
 export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
   for (const door of level.doors) {
@@ -29,9 +29,8 @@ export const drawLockFlashes = (c: CanvasRenderingContext2D) => {
   }
 };
 
-// A shine where a light was picked up or dropped: a warm glow and a four-point glint that flare and
-// fade over SHINE_MS, added on top of everything. Never under SHINE_MIN_CSS_PX on screen, so it
-// still reads zoomed out on a phone.
+// A shine where a light was picked up or dropped: a glow and a four-point glint, flaring and fading
+// over SHINE_MS. Never under SHINE_MIN_CSS_PX on screen.
 const CANDLE_GLOW_RGB = '255, 220, 150';
 const SHINE_MS = 750;
 const SHINE_SIZE = 0.2; // cells, the long rays' length at their longest
@@ -50,7 +49,6 @@ export const drawShines = (c: CanvasRenderingContext2D) => {
     c.fillStyle = glow;
     c.fillRect(s.x - size, s.y - size, size * 2, size * 2);
 
-    // The glint: thin tapered rays, each a diamond from the centre.
     c.translate(s.x, s.y);
     c.rotate((t * Math.PI) / 2);
     c.fillStyle = `rgba(${CANDLE_GLOW_RGB}, ${0.6 * strength})`;
@@ -77,8 +75,7 @@ export const drawShines = (c: CanvasRenderingContext2D) => {
   c.restore();
 };
 
-// Dust: motes drifting and twinkling across the level, drawn 'source-atop' the lit area (see draw)
-// so they only show in light. Scattered afresh for each new level.
+// Dust: motes drifting across the level, drawn 'source-atop' the lit area so they only show in light.
 type Mote = { x: number; y: number; heading: number; speed: number; phase: number };
 let dust: Mote[] = [];
 let dustFor: Wall[] | null = null;

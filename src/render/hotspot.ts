@@ -4,8 +4,7 @@ import { level } from '../core/state';
 import { insideWalls } from '../core/util';
 import { wallArt, wallMask } from './walls';
 
-// Where a direct flashlight beam's centre line hits a wall: the point, how far it is, the wall
-// face's direction there, and how squarely the beam hits it (1 = head-on, near 0 = grazing).
+// Where a direct beam's centre line hits a wall: the point, distance, face angle, and how squarely (cos).
 const beamWallHit = (group: LightGroup) => {
   if (group.beamAxis === undefined || group.spill || group.depth !== 0) return null;
   const o = group.origin;
@@ -38,10 +37,9 @@ const beamWallHit = (group: LightGroup) => {
   return null;
 };
 
-// Where the beam's centre hits a wall, the wall's art shows through in a soft spot, glowing close up
-// (HOTSPOT_GLOW, fading fast with distance). The spot is the beam's footprint (at least
-// HOTSPOT_MIN_RADIUS), stretched along the wall at a slant (up to HOTSPOT_MAX_STRETCH), fading with
-// distance, and trimmed to the walls so it never lights the floor.
+// Where the beam's centre hits a wall, the wall's art shows through in a soft spot, glowing close up.
+// It's the beam's footprint (at least HOTSPOT_MIN_RADIUS), stretched along a slanted wall, fading
+// with distance, and trimmed to the walls.
 const HOTSPOT_MIN_RADIUS = 0.4 * GRID_SIZE;
 const HOTSPOT_BRIGHTNESS = 0.6; // how much of the wall shows at the spot's centre, close up
 const HOTSPOT_GLOW = 0.8;
@@ -49,7 +47,7 @@ const HOTSPOT_MAX_STRETCH = 2;
 const hotspotRadius = (dist: number) => Math.max(HOTSPOT_MIN_RADIUS, dist * Math.tan(FLASHLIGHT.cone / 2));
 const hotspotStretch = (cos: number) => Math.min(HOTSPOT_MAX_STRETCH, 1 / Math.max(cos, 1e-3));
 
-// How far the group's hotspot reaches from where the beam hits (0 if it has none), for its bounds.
+// How far a group's hotspot reaches (0 if none), for its bounds.
 export const hotspotReach = (group: LightGroup) => {
   const hit = beamWallHit(group);
   return hit ? hotspotRadius(hit.dist) * hotspotStretch(hit.cos) : 0;
@@ -67,7 +65,7 @@ export const drawBeamHotspot = (c: CanvasRenderingContext2D, glow: CanvasRenderi
   const r = hotspotRadius(hit.dist);
   const stretch = hotspotStretch(hit.cos);
 
-  // The spot's soft shape, then the wall art (lined up with the world) kept only inside it.
+  // The spot's soft shape, filled with the wall art lined up with the world.
   const ext = Math.ceil(r * stretch);
   const ox = Math.floor(hit.x) - ext;
   const oy = Math.floor(hit.y) - ext;
@@ -89,7 +87,7 @@ export const drawBeamHotspot = (c: CanvasRenderingContext2D, glow: CanvasRenderi
   h.fillStyle = art;
   h.fillRect(0, 0, ext * 2, ext * 2);
 
-  // Trimmed to the walls with the wall mask (cheaper on a phone's GPU than clipping to every wall).
+  // Trimmed with the wall mask (cheaper on a phone than clipping to every wall).
   h.globalCompositeOperation = 'destination-in';
   h.drawImage(wallMask, ox, oy, ext * 2, ext * 2, 0, 0, ext * 2, ext * 2);
   c.drawImage(hotspotLayer, ox, oy); // (only its alpha counts, in the light map)

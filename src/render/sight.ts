@@ -1,5 +1,6 @@
 import { polygonsPath, mirrorSegment, normalOf } from '../core/util';
-import { castLight, insideAny, brightnessAt } from '../light/rayTracer';
+import { castLight } from '../light/rayTracer';
+import { insideAny, brightnessAt } from '../light/brightness';
 import type { LightGroup } from '../light/rayTracer';
 import type { MirrorState, Point, Scene } from '../core/types';
 import { LIGHT, FLAME, LIT_SURFACES } from '../core/consts';
@@ -9,10 +10,9 @@ import { signedArea, quadsPath } from './geometry';
 import type { Bounds } from './geometry';
 import { litFaces } from './faces';
 
-// Everything the player can see, directly or in a mirror (traced like light). Points are pushed
-// LIT_SURFACES.wallPenetration past wall faces to keep the lit face band, and every polygon is wound
-// the same way (a mirror flips it), so the view fills as one nonzero path without holes.
-// Also sets viewFaces: the wall and door faces in sight (see litFaces).
+// Everything the player can see, directly or in a mirror (traced like light), pushed
+// LIT_SURFACES.wallPenetration past wall faces to keep the lit band, and wound one way so it fills
+// without holes. Also sets viewFaces, the faces in sight.
 let viewFaces: Point[][] = [];
 export const computeView = (scene: Scene): Point[][] => {
   const origin = { x: player.x, y: player.y };
@@ -36,9 +36,8 @@ export const computeView = (scene: Scene): Point[][] => {
   );
 };
 
-// What the lit layer is cut down to: the line of sight, plus a LIT_SURFACES.wallPenetration band along
-// every visible wall face, so a lit face band shows however shallow the angle you see the wall at.
-// (The view's own push into walls runs along sight lines, which barely enters a wall seen edge-on.)
+// What the lit layer is cut to: the line of sight plus a band along every visible face, so a lit face
+// shows even when seen edge-on.
 const viewMask = document.createElement('canvas');
 const viewMaskCtx = viewMask.getContext('2d')!;
 export const drawViewMask = (view: Point[][], b: Bounds) => {
@@ -53,7 +52,7 @@ export const drawViewMask = (view: Point[][], b: Bounds) => {
   return viewMask;
 };
 
-// A mirror is seen if any point just off either face, anywhere along it, is lit and in line of sight.
+// A mirror is seen if a point just off either face is lit and in sight.
 export const mirrorSeen = (m: MirrorState, groups: LightGroup[], view: Point[][]) => {
   const seg = mirrorSegment(m, m.shownStep);
   const n = normalOf(seg, 4);

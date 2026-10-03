@@ -3,7 +3,7 @@ import type { Hint } from '../content/help';
 import { input } from '../core/state';
 import { showSplash } from './splash/state';
 
-// UI state the game drives from outside the components (main.ts, renderer, touch input).
+// UI state the game drives from outside the components.
 
 export type Screen = 'title' | 'levels' | 'howto' | 'credits' | 'pause' | 'ending';
 

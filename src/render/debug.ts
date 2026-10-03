@@ -35,7 +35,6 @@ export const perfFrameEnd = () => {
   perfFrames = 0;
 };
 
-// Frames drawn per second, counted over each second.
 let fpsWindowStart = 0;
 let fpsFrames = 0;
 let fps = 0;
@@ -48,8 +47,7 @@ export const countFrame = (now: number) => {
   }
 };
 
-// The fps line (and, with ?perf, the timings) over the screen: only with ?fps or ?perf, or in the
-// editor's playtest.
+// The fps line (and ?perf timings): only with ?fps, ?perf, or in the playtest.
 const showHud = params.has('fps') || perfParam !== null || params.has('playtest');
 export const drawHud = (rayCount: number, lightCount: number, groupCount: number) => {
   if (!showHud) return;
@@ -57,7 +55,6 @@ export const drawHud = (rayCount: number, lightCount: number, groupCount: number
   ctx.font = '12px monospace';
   ctx.fillText(`${fps} fps · ${rayCount} rays · ${lightCount} lights · ${groupCount} light groups`, 8, 16);
   if (perfText) {
-    // Wrapped to the screen's width, so it all shows on a phone.
     const maxW = canvas.width / pixelRatio - 16;
     let y = viewMode !== 'normal' ? 48 : 32;
     let line = '';

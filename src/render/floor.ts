@@ -10,19 +10,17 @@ import { ensureWallArt, wallArt, dimWallArt } from './walls';
 // A lever pulled within the last ANIMATION.leverFlickMs is mid-flick.
 const leverFlicking = (l: LeverState) => frameTime - l.pulledAt < ANIMATION.leverFlickMs;
 
-// Everything that belongs to the floor (markers, lamps, plates, levers, unfound lights, mirrors) is
-// painted into both the lit and the remembered floor, so it's hidden in darkness and remembered in
-// fog like the floor itself. `dim` picks the fog palette, and draws mirrors as last seen.
+// Everything on the floor (markers, lamps, plates, levers, unfound lights, mirrors), painted into both
+// the lit and the remembered floor. `dim`: the fog palette, with mirrors as last seen.
 const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = true) => {
   c.lineWidth = 0.06 * GRID_SIZE;
 
-  // Stairs: the way in at the start, and the way on at the exit.
   const s = cellCenter(level.start);
   const g = cellCenter(level.goal);
   drawObject(c, 'stairs', s.x, s.y, 0, dim);
   drawObject(c, 'stairsExit', g.x, g.y, 0, dim);
 
-  // Wall lamps: a mounting bar along the wall edge with a half-disc of glass bulging into the room.
+  // Wall lamps: a bar along the wall and a half-disc of glass.
   for (const l of level.lamps) {
     const p = cellCenter(l);
     const ex = p.x + (l.toWallX * GRID_SIZE) / 2;
@@ -46,19 +44,17 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = t
     c.fill();
   }
 
-  // Lights waiting to be found: only as remembered here; lit, they're drawn on top (see objects.ts).
+  // Unfound lights, only in fog here; lit, they're drawn on top (objects.ts).
   if (dim) for (const p of lightState.pickups) drawObject(c, 'flashlight', p.x, p.y, p.aimAngle, true);
 
-  // Plates: dead, on the floor. Awake, they shine over the darkness (see drawAwakePlates).
+  // Plates, dead. Awake, they're drawn over the dark (drawAwakePlates).
   for (const door of level.doors) {
     if (door.kind === 'lever') continue;
     const at = cellCenter(door.trigger);
     drawObject(c, 'plateDead', at.x, at.y, 0, dim);
   }
 
-  // Levers: off or on, flicking through mid as pulled. One that turns mirrors is a wheel, upright to
-  // start and turned as far as the (first) mirror it turns has turned since, so it spins as that
-  // does, pull after pull.
+  // Levers: off, on, or mid-flick. One that turns mirrors is a wheel, turned as far as its (first) mirror.
   for (const l of level.levers) {
     const at = cellCenter(l);
     const turns = level.mirrors.find(m => m.control === l.id);
@@ -77,10 +73,9 @@ const drawFloorMarks = (c: CanvasRenderingContext2D, dim: boolean, withDoors = t
     drawObject(c, 'mirror', at.x, at.y, (step * Math.PI) / MIRROR.steps - Math.PI / 2, dim); // the art is upright
   }
 
-  // Doors: each leaf where it is (as last seen, in fog).
   if (withDoors) drawDoors(c, dim);
 };
-// Every door's art, turned to lie along each leaf from its hinge.
+// Each door's art along its leaves.
 const drawDoors = (c: CanvasRenderingContext2D, dim: boolean) => {
   for (const door of level.doors) {
     for (const s of doorLeaves(door, dim ? door.seenOpenAmount : door.openAmount)) {
@@ -122,8 +117,8 @@ export const ensureDimFloor = () => {
   dimFloorCtx.drawImage(dimMarksCanvas, 0, 0);
 };
 
-// The lit art the light map reveals: the floor, floor marks and a warm glow, then the walls' and
-// doors' own colours (only their lit faces show). Rebuilt only when something on it changes.
+// The lit art the light map reveals: floor, floor marks, a warm tint, walls and doors. Rebuilt only
+// when something on it changes.
 export const litArt = document.createElement('canvas');
 const litArtCtx = litArt.getContext('2d')!;
 let litArtKey = '';

@@ -20,8 +20,7 @@ const scale = () => Math.max(1, Math.floor((innerHeight * 0.55) / CANDLE_H));
 const flicker = (now: number) =>
   0.9 + 0.05 * Math.sin(now / 130) + 0.03 * Math.sin(now / 57 + 1.3) + 0.02 * Math.sin(now / 23 + 4.1);
 
-// The candle behind the title screen, over the game and under the menus.
-// Animated per frame through refs, not re-renders.
+// The candle behind the title screen, animated per frame through refs, not re-renders.
 export const Splash = () => {
   const shown = splashShown.value;
   const rig = useRef<HTMLDivElement>(null);

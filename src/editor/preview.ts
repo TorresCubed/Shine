@@ -1,10 +1,11 @@
-import { castLight, castFlashlight, brightnessAt, fearLit } from '../light/rayTracer';
-import type { LightGroup } from '../light/rayTracer';
-import { getScene } from '../light/scene';
-import { cellCenter, doorLeaves, lampSource } from '../core/util';
+import { GRID_SIZE, LIGHT, FLAME, FLASHLIGHT } from '../core/consts';
 import { startingMirror } from '../core/state';
 import type { Level, LightKind, Point } from '../core/types';
-import { GRID_SIZE, LIGHT, FLAME, FLASHLIGHT } from '../core/consts';
+import { cellCenter, doorLeaves, lampSource } from '../core/util';
+import { brightnessAt, fearLit } from '../light/brightness';
+import { castLight, castFlashlight } from '../light/rayTracer';
+import type { LightGroup } from '../light/rayTracer';
+import { getScene } from '../light/scene';
 
 // A level's light as the game would trace it: its lamps and candles, plus any lights put down to try
 // things. Light and locked doors open while their plate is lit (lever doors stay shut), and since an

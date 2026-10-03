@@ -1,4 +1,4 @@
-import { fadeAt } from '../light/rayTracer';
+import { fadeAt } from '../light/brightness';
 import type { LightGroup } from '../light/rayTracer';
 import type { DoorState, Point, Segment } from '../core/types';
 import { GRID_SIZE, LIT_SURFACES, DOOR } from '../core/consts';
@@ -7,19 +7,16 @@ import { doorLeaves } from '../core/util';
 import { leafQuad, quadsPath } from './geometry';
 import { isWallCell } from './walls';
 
-// A light's lit faces: the edges of its outline that lie against a wall or door (its midpoint, nudged
-// square to the edge away from the light, is in a wall cell or on a leaf), each as a thin quad
-// reaching LIT_SURFACES.wallPenetration into the solid, so no clipping is needed (clipping the whole
-// outline to the walls was most of a phone's frame). They're sorted into FACE_BANDS by how squarely
-// the light hits them and, for a beam, its profile, so each band is one fill.
-// A door leaf is too thin for a band: one the light touches anywhere is lit whole, at its brightest band.
+// A light's lit faces: outline edges against a wall or door, each as a thin quad reaching
+// LIT_SURFACES.wallPenetration into the solid, so nothing needs clipping (clipping the outline to the walls
+// was most of a phone's frame). Sorted into FACE_BANDS by how squarely they're lit, one fill per band.
+// A door leaf is too thin for a band: touched anywhere, it's lit whole at its brightest band.
 const FACE_BANDS = 6;
 type FaceBands = Point[][][]; // [band][quad] = its 4 corners
 type Leaf = { door: DoorState; s: Segment };
 const FACE_PROBE = 2; // px
 const faceTarget = (x: number, y: number, leaves: Leaf[]): 'wall' | Leaf | null => {
-  // Doors first: an open leaf lies flat along its cell's side, often against a wall face, and is
-  // still the door there.
+  // Doors first: an open leaf lies along its cell's side, often against a wall, and is still the door.
   for (const leaf of leaves) {
     const { s } = leaf;
     const ex = s.x2 - s.x1;
@@ -58,8 +55,7 @@ export const litFaces = (group: LightGroup): FaceBands => {
       if (!target) continue;
       const cos = Math.abs(mx * -ey + my * ex) / (len * md); // incidence vs. the face
       const beam = fadeAt({ x: o.x + mx, y: o.y + my }, group);
-      // sqrt softens the fall-off toward grazing angles, so a wall lit along its length doesn't
-      // drop to a dark line.
+      // sqrt softens grazing angles, so a wall lit along its length isn't a dark line.
       const band = Math.min(FACE_BANDS - 1, Math.floor(Math.sqrt(cos) * beam * FACE_BANDS));
       if (target !== 'wall') {
         litLeaves.set(target, Math.max(band, litLeaves.get(target) ?? 0));
@@ -72,17 +68,15 @@ export const litFaces = (group: LightGroup): FaceBands => {
   for (const [{ s }, band] of litLeaves) bands[band].push(leafQuad(s));
   return bands;
 };
-// A light's lit faces, worked out once a frame (the light map and fog memory both use them). Each
-// frame's lights are new objects, so last frame's drop out on their own.
+// Lit faces, worked out once a frame per light (the light map and fog memory both use them).
 const facesCache = new WeakMap<LightGroup, FaceBands>();
 export const facesOf = (group: LightGroup) => {
   let bands = facesCache.get(group);
   if (!bands) facesCache.set(group, (bands = litFaces(group)));
   return bands;
 };
-// Each band's quads, with the light's falloff (`paint`), at `strength(v)` for the band's brightness v:
-// into the light map at full strength head-on, darker toward grazing; into the glow map by how much
-// brighter than its art a face glows in a strong light.
+// Fills each band at `strength(v)` of the light's falloff for its brightness v: dimmer toward grazing in
+// the light map, and in the glow map by how far past its art a face glows.
 export const drawFaceLight = (
   c: CanvasRenderingContext2D,
   bands: FaceBands,

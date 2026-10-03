@@ -1,6 +1,5 @@
-// Progress, kept in localStorage: the levels played and finished (by number, from 1), and the last
-// one played. Storage can be missing or refuse (private browsing, blocked site data), so every read
-// and write is guarded and the game plays on without it.
+// Levels played and finished (numbered from 1) and the last played, in localStorage. Every read and
+// write is guarded: without storage, progress just isn't kept.
 
 const KEY = 'shine-progress';
 type Progress = { completed: number[]; played: number[]; last: number | null };
@@ -12,7 +11,7 @@ const read = (): Progress => {
     if (p && Array.isArray(p.completed)) {
       const completed = numbers(p.completed);
       const last = Number.isInteger(p.last) ? p.last : null;
-      // (Saved before `played` was kept: what's finished, and the last level, were played.)
+      // (Saved before `played` existed: finished levels and the last were played.)
       const played = p.played ? numbers(p.played) : [...completed, ...(last !== null ? [last] : [])];
       return { completed, played, last };
     }

@@ -1,7 +1,7 @@
-import type { Level } from '../core/types';
 import { GRID_SIZE } from '../core/consts';
-import { fearLit } from '../light/rayTracer';
+import type { Level } from '../core/types';
 import { cellCenter, insideWalls } from '../core/util';
+import { fearLit } from '../light/brightness';
 import { traceLevel } from './preview';
 
 // Every way to win a flashlight-only level: each setting of the movable mirrors, drop cell and aim,

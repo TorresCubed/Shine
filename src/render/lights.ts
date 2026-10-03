@@ -6,10 +6,8 @@ import { GRID_SIZE, SPRITES, LIGHT, FLAME, FLASHLIGHT } from '../core/consts';
 import { level, player, lightState, gameState } from '../core/state';
 import { skip } from './debug';
 
-// A held light shines from where it is in the player sprite. That reaches past your footprint, so up
-// against a wall or mirror it's pulled back to just in front of it, never through. The flashlight's
-// beam fills its lens: it starts far enough behind the lens (inside the arm, under the sprite) to be
-// exactly lens-wide there.
+// A held light shines from where it is in the sprite, pulled back from any wall or mirror in front of
+// it. The flashlight starts far enough behind its lens to be exactly lens-wide there.
 const heldLightSource = (kind: LightKind, scene: Scene): Point => {
   const sprite = SPRITES.player[kind];
   const fx = (sprite.light.x - sprite.anchor.x) * SPRITES.playerScale;
@@ -28,14 +26,13 @@ const heldLightSource = (kind: LightKind, scene: Scene): Point => {
   return { x: lens.x - cos * back, y: lens.y - sin * back };
 };
 
-// Every light this frame: the one in hand, dropped ones, the level's lamps. The player's lights
-// ignite at level start; lamps are already burning.
+// Every light this frame: in hand, dropped, and lamps. The player's lights grow in at level start.
 export const castLights = (scene: Scene, now: number) => {
   const ignite = Math.min(1, Math.max(0, (now - gameState.startedAt) / LIGHT.igniteMs));
   const grow = 1 - (1 - ignite) ** 3;
   const range = (kind: LightKind) => (kind === 'flashlight' ? FLASHLIGHT.range : FLAME.candleRadius) * grow;
 
-  // `seed` keeps each flame's flicker its own, and steady from frame to frame.
+  // `seed` keeps each flame's flicker its own and steady.
   const sources: { kind: LightKind; at: Point; aim: number; radius: number; seed: number }[] = [];
   if (lightState.held.value) {
     sources.push({
@@ -47,8 +44,7 @@ export const castLights = (scene: Scene, now: number) => {
     });
   }
   for (const d of lightState.dropped) {
-    // A dropped flashlight shines from its handle end, so its own cell is inside the beam, but never
-    // from behind a wall, door or mirror it's been put down against.
+    // A dropped flashlight shines from its handle end (so its own cell is lit), never from behind a wall.
     const cos = Math.cos(d.aimAngle);
     const sin = Math.sin(d.aimAngle);
     const fullBack = d.kind === 'flashlight' ? FLASHLIGHT.back * GRID_SIZE : 0;

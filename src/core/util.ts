@@ -38,8 +38,7 @@ export const lampSource = (l: Lamp): Point => {
   return { x: c.x + l.toWallX * out, y: c.y + l.toWallY * out };
 };
 
-// Whether segment `s` passes within `margin` of the square centred on `c` with half-size `half`.
-// Sampled along the segment, finely enough for short mirrors against the player's footprint.
+// Whether segment `s` passes within `margin` of the square at `c` with half-size `half` (sampled).
 export const segmentNearSquare = (s: Segment, c: Point, half: number, margin: number) => {
   const steps = 16;
   for (let i = 0; i <= steps; i++) {
@@ -70,8 +69,7 @@ export const polygonsPath = (c: CanvasRenderingContext2D, polygons: Point[][]) =
   }
 };
 
-// A door's leaves at `openAmount`, each swung that far (eased, so it starts and stops gently) from
-// along its edge towards flat against its `into` cell's side. They block light like a wall's edge.
+// A door's leaves at `openAmount` (eased), each swung from along its edge toward its `into` cell.
 export const doorLeaves = (door: Door, openAmount: number): Segment[] => {
   const t = easeInOut(openAmount);
   return door.leaves.map(l => {
@@ -85,8 +83,8 @@ export const doorLeaves = (door: Door, openAmount: number): Segment[] => {
   });
 };
 
-// Every cell the player's footprint overlaps with its centre at (x, y). (The 0.001 keeps an edge
-// exactly on a cell boundary, such as flush against a wall, from counting the cell beyond.)
+// Every cell the player's footprint overlaps, centred at (x, y). (The 0.001 stops an edge exactly on a
+// boundary, flush against a wall, from counting the cell beyond.)
 export const footprintCells = (x: number, y: number): GridPos[] => {
   const h = PLAYER.collisionRadius;
   const e = 0.001;

@@ -5,9 +5,8 @@ import { player, camera } from '../core/state';
 import { canvas, ctx, clampZoom, pixelRatio, worldCanvas } from './canvases';
 import type { Bounds } from './geometry';
 
-// The camera follows the player (plus any pan), clamped to the level's edges, or centred on a level
-// smaller than the screen. It glides to a new zoom over CAMERA.zoomEaseMs, drawn smoothed on the way;
-// mid-pinch it follows your fingers exactly.
+// The camera follows the player (plus any pan), clamped to the level, or centres a level smaller than
+// the screen. It glides to a new zoom over CAMERA.zoomEaseMs; mid-pinch it follows your fingers.
 let zoomFrom = 0;
 let zoomTo = 0;
 let zoomMs = 0;
@@ -17,9 +16,8 @@ export const screenToWorld = (clientX: number, clientY: number): Point => ({
   x: (clientX * pixelRatio - screenView.x) / screenView.zoom,
   y: (clientY * pixelRatio - screenView.y) / screenView.zoom,
 });
-// Mid-glide, the camera heads straight from where it was to where it'll be at the new zoom (following
-// the player there), in step with the zoom: its progress goes by 1/zoom, the view's size, so the view
-// shrinks (or grows) toward its end evenly and never shows past the level's edges on the way.
+// Mid-glide, the camera moves in step with the zoom (by 1/zoom, the view's size), so the view never
+// shows past the level's edges on the way.
 let glideLength = CAMERA.zoomEaseMs; // this glide's length (a new level's zoom-in is slower)
 let camFrom = { x: 0, y: 0 };
 let lastCam = { x: 0, y: 0 };
@@ -55,13 +53,12 @@ export const updateCamera = (dt: number) => {
     camY = camFrom.y + (camY - camFrom.y) * w;
   }
   lastCam = { x: camX, y: camY };
-  // Mid-gesture, the pan stops where the view does at the level's edges, so dragging back moves it at once.
+  // Mid-gesture, the pan stops at the level's edges, so dragging back moves the view at once.
   if (camera.pinching) {
     camera.panX = camX - player.x;
     camera.panY = camY - player.y;
   }
-  // Whole-pixel offsets and no smoothing zoomed in, so art pixels land exactly on screen pixels and
-  // don't shimmer as the camera moves. Zoomed out below 1x the art has to shrink, so it's smoothed.
+  // Whole-pixel offsets and no smoothing zoomed in, so art pixels don't shimmer. Below 1x it's smoothed.
   smoothScreen = zoom < 1 || !settled || camera.pinching;
   Object.assign(screenView, {
     zoom,
@@ -75,8 +72,7 @@ export const snapZoom = () => {
   zoomTo = 0;
 };
 
-// The part of the world on screen this frame (padded a little, lined up with the fog memory's
-// pixels, and clamped to the world): only it needs drawing.
+// The part of the world on screen (padded, aligned to the fog memory's pixels): only it is drawn.
 export const visibleRect = (): Bounds => {
   const step = 1 / FOG.memoryScale;
   const pad = 2;
@@ -93,7 +89,7 @@ export const visibleRect = (): Bounds => {
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
 };
 
-// The world canvas onto the screen, through this frame's camera (updateCamera).
+// The world canvas onto the screen.
 export const drawToScreen = () => {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = 'black';

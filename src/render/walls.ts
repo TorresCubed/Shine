@@ -5,20 +5,18 @@ import { level } from '../core/state';
 import { worldCanvas } from './canvases';
 import { wallImage, dimCopy } from './art';
 
-// Walls are autotiled from walls.png: every wall cell gets the tile's middle, and only the sides that
-// face floor get its rim, so neighbouring wall cells join into one solid wall. Corners are the tile's
-// own outer corner, a continuing edge, or an inner corner (the rim bent round, where only the
-// diagonal is floor). Baked once per level into wallArt, with a grayed, darkened copy for fog memory.
+// Walls are autotiled from walls.png: each wall cell gets the tile's middle, with its rim only on sides
+// facing floor, so neighbours join into one wall. Corners are an outer corner, a continuing edge, or
+// an inner corner. Baked once per level, with a fog copy.
 const WALL_RIM = 4; // how deep the rim is in walls.png, in its pixels
 export const wallArt = document.createElement('canvas');
 export const dimWallArt = document.createElement('canvas');
-// The walls as a solid mask (opaque in walls, clear elsewhere), for trimming lit wall faces to them,
-// and as a grid (1 = wall cell, row by row), for quick lookups.
+// The walls as a mask (for trimming lit faces) and as a grid of cells (1 = wall, row by row).
 export const wallMask = document.createElement('canvas');
 let wallCells = new Uint8Array(0);
 let wallArtFor: Wall[] | null = null;
 
-// Whether a cell is wall (outside the level counts as wall), from the grid.
+// Whether a cell is wall (outside the level counts).
 export const isWallCell = (gx: number, gy: number) => {
   const cols = worldCanvas.width / GRID_SIZE;
   const rows = worldCanvas.height / GRID_SIZE;
@@ -68,7 +66,6 @@ export const ensureWallArt = () => {
       piece(x0, y0, r, down ? n - 2 * r : n - r, mid, r, r, n - r);
       piece(x0, y0, left ? r : 0, r, r, mid, 0, r);
       piece(x0, y0, right ? n - 2 * r : n - r, r, r, mid, n - r, r);
-      // Corners.
       for (const [cx, cy] of [
         [-1, -1],
         [1, -1],
@@ -91,8 +88,7 @@ export const ensureWallArt = () => {
         else if (diag)
           piece(x0, y0, inX, inY, r, r, dx, dy); // solid wall
         else {
-          // Inner corner: each pixel is the rim at its distance from the corner point, taken from the
-          // middle of the top or bottom rim.
+          // Inner corner: each pixel is the rim at its distance from the corner.
           for (let i = 0; i < r; i++)
             for (let j = 0; j < r; j++) {
               const depth = Math.max(i, j);

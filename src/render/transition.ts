@@ -4,8 +4,7 @@ import { gameState, input } from '../core/state';
 import { isMenuOpen } from '../ui/store';
 import { canvas, ctx, pixelRatio } from './canvases';
 
-// A value that eases from where it is to a target over some time, then optionally runs something:
-// the screen's darkness and the Level Complete card's opacity, for level transitions.
+// A value easing to a target over time, then optionally running something.
 export class Fade {
   private from = 0;
   private to = 0;
@@ -17,7 +16,6 @@ export class Fade {
     this.value = value;
   }
 
-  // Ease to `to` over `ms`, starting `delay` ms from now, then call `then`.
   go(to: number, ms: number, then: (() => void) | null = null, delay = 0) {
     this.from = this.value;
     this.to = to;
@@ -26,13 +24,12 @@ export class Fade {
     this.then = then;
   }
 
-  // Jump straight to `value`.
   set(value: number) {
     this.value = this.from = this.to = value;
     this.then = null;
   }
 
-  // Its value at `now` (on the performance.now() clock), running `then` once it gets there.
+  // Its value at `now` (performance.now() clock), running `then` on arrival.
   valueAt(now: number) {
     const t = Math.min(1, Math.max(0, (now - this.startsAt) / this.ms));
     this.value = this.from + (this.to - this.from) * easeInOut(t);
@@ -48,8 +45,7 @@ export class Fade {
 export const screenDark = new Fade(1); // 0 clear, 1 black
 export const cardShown = new Fade(0); // the Level Complete card: 0 hidden, 1 shown
 
-// The Level Complete card, at `alpha`: the title, then room for a flame (to come: a candle flickering
-// beneath the title), then the prompt.
+// The Level Complete card at `alpha`, with room under the title for a flame (to come).
 const CARD_FLAME_SPACE = 110; // px (CSS) kept clear between the title and the prompt
 const drawLevelComplete = (alpha: number) => {
   const w = canvas.width / pixelRatio;
@@ -68,8 +64,7 @@ const drawLevelComplete = (alpha: number) => {
   ctx.globalAlpha = 1;
 };
 
-// Level transitions: once you reach the exit, the world dims and the card fades in (see main.ts for
-// leaving and arriving). Then the screen's darkness and the card go over everything.
+// On reaching the exit the world dims and the card fades in; the darkness and card go over everything.
 let winShown = false;
 export const drawTransition = (now: number) => {
   if (gameState.status.value === 'won' && !winShown) {

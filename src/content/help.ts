@@ -29,7 +29,7 @@ export const LEVEL_HINTS: Record<number, Hint> = {
   },
 };
 
-// The whole of the controls, for the How to Play screen.
+// The controls, for the How to Play screen.
 export const CONTROLS: { keys: string; touch: string; does: string }[] = [
   { keys: 'WASD / arrows', touch: 'Drag anywhere', does: 'Walk' },
   { keys: 'Space', touch: 'Tap yourself', does: 'Put down or pick up a light' },

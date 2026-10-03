@@ -1,5 +1,5 @@
 import { cellCenter, doorLeaves, normalOf, polygonsPath } from '../core/util';
-import { insideAny, brightnessAt } from '../light/rayTracer';
+import { insideAny, brightnessAt } from '../light/brightness';
 import type { LightGroup } from '../light/rayTracer';
 import type { DoorState, GridPos, Point } from '../core/types';
 import { GRID_SIZE, FOG, DOOR } from '../core/consts';
@@ -15,15 +15,14 @@ const FOG_MEMORY_STOPS: [number, string][] = Array.from({ length: 17 }, (_, i) =
   const v = Math.round(255 * (1 - t ** FOG.falloffShoulder) ** 2);
   return [t, `rgb(${v},${v},${v})`];
 });
-// The same, inverted, for the recent memory (which is kept inverted: see fadeMemory).
+// The same, inverted, for the recent memory.
 const FOG_FADE_STOPS: [number, string][] = FOG_MEMORY_STOPS.map(([t, color]) => {
   const v = 255 - Number(color.slice(4, color.indexOf(',')));
   return [t, `rgb(${v},${v},${v})`];
 });
 
-// Writes the light in line of sight into both memories, with the light's own falloff, so a spot is
-// remembered only as well as it was seen. Brightness is in an opaque canvas's RGB, so 'lighten' is an
-// exact per-pixel max ('darken', a min, in the inverted recent memory).
+// Writes the light in sight into both memories with its own falloff, so a spot is remembered as well
+// as it was seen. Opaque RGB makes 'lighten' an exact per-pixel max ('darken' in the inverted one).
 const rememberLight = (groups: LightGroup[], view: Point[][]) => {
   for (const c of [exploredCtx, recentCtx]) {
     const inverted = c === recentCtx;
@@ -38,8 +37,7 @@ const rememberLight = (groups: LightGroup[], view: Point[][]) => {
       c.fillStyle = gradient;
       polygonsPath(c, g.polys);
       c.fill();
-      // Its lit wall and door faces (a fill of their own: a quad wound against the light's outline
-      // would cancel it out where they overlap).
+      // Faces get their own fill: wound against the outline, they'd cancel it.
       c.beginPath();
       for (const quads of facesOf(g)) quadsPath(c, quads);
       c.fill();
@@ -48,9 +46,8 @@ const rememberLight = (groups: LightGroup[], view: Point[][]) => {
   }
 };
 
-// The recent memory fades from full to nothing over FOG.fadeS (what's in sight is rewritten each
-// frame). Multiplying an 8-bit mask down rounds small drops away, so it's kept inverted (white =
-// forgotten) and fades by adding whole steps ('lighter'): exact, and all on the GPU.
+// The recent memory fades out over FOG.fadeS. Multiplying an 8-bit mask down rounds small drops away,
+// so it's kept inverted (white = forgotten) and fades by adding whole steps: exact, and on the GPU.
 let fadeOwed = 0; // how much the memory should have dropped that hasn't yet (0-255 scale)
 export const fadeMemory = (dt: number) => {
   fadeOwed += (255 * dt) / FOG.fadeS;
@@ -63,9 +60,8 @@ export const fadeMemory = (dt: number) => {
   recentCtx.globalCompositeOperation = 'source-over';
 };
 
-// Objects are remembered whole: when one is seen, or one you've seen does something (a door swings
-// or locks, a mirror turns, a lever is pulled), the memory under all of it is set to `strength` (full
-// unless given), so it shows complete and starts fading afresh.
+// Remembers an object whole (seen, or seen before and doing something) at `strength`, so it shows
+// complete and starts fading afresh.
 const rememberWhole = (shape: (c: CanvasRenderingContext2D) => void, strength = 1) => {
   const v = Math.round(255 * strength);
   for (const c of [exploredCtx, recentCtx]) {
@@ -107,9 +103,8 @@ const rememberObjects = (groups: LightGroup[], view: Point[][]) => {
     }, strength);
   }
 };
-// How well a door is remembered: as well as the floor beside it (the memory falloff of the brightest
-// light just off its leaves), or out of light, as well as when last lit. At full, a dimly lit door's
-// fog copy showed far brighter than the floor around it.
+// A door is remembered as well as the floor beside it, or as when last lit (at full, a dim door's fog
+// copy outshone the floor around it).
 const doorMemory = new WeakMap<DoorState, number>();
 const doorMemoryLevel = (door: DoorState, groups: LightGroup[]) => {
   let best = -1;
@@ -130,9 +125,8 @@ const doorMemoryLevel = (door: DoorState, groups: LightGroup[]) => {
   return doorMemory.get(door) ?? 1;
 };
 
-// Fog memory is written (and its mask rebuilt) every MEMORY_EVERY frames: fog only changes as
-// things fade, and what's lit is drawn fresh over it every frame anyway. `write` false skips the
-// writing (?skip=memory) but keeps the mask's rhythm.
+// Fog memory is written every MEMORY_EVERY frames: it changes slowly, and what's lit is redrawn every
+// frame. `write` false (?skip=memory) keeps the rhythm without writing.
 const MEMORY_EVERY = 2;
 let memoryFrames = 0;
 let memoryMaskStale = true;
@@ -152,16 +146,14 @@ export const rememberEverything = () => {
   }
 };
 
-// What fog shows of each spot: FOG.fadeMin of how well it was ever seen, and the rest of how
-// recently, so remembered things fade after you leave but never all the way. Rebuilt only when the
-// memory's been written since, or the level's changed size.
+// What fog shows: FOG.fadeMin of how well a spot was ever seen, plus the rest of how recently, so it
+// fades but never fully. Rebuilt only after a write or a resize.
 const memoryMask = document.createElement('canvas');
 const memoryMaskCtx = memoryMask.getContext('2d')!;
 export const getMemoryMask = () => {
   const resized = memoryMask.width !== exploredCanvas.width || memoryMask.height !== exploredCanvas.height;
   if (!memoryMaskStale && !resized) return memoryMask;
   memoryMaskStale = false;
-  // (Resized only when the level changes: resizing a canvas reallocates it.)
   if (resized) {
     memoryMask.width = exploredCanvas.width;
     memoryMask.height = exploredCanvas.height;

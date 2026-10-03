@@ -1,5 +1,5 @@
-import { STEP_DEGREES } from '../content/levels';
-import type { LevelOptions, Side, DoorSpec, MirrorSpec } from '../content/levels';
+import { STEP_DEGREES } from '../content/levelFormat';
+import type { LevelOptions, Side, DoorSpec, MirrorSpec } from '../content/levelFormat';
 import type { Door, LightKind, Mirror } from '../core/types';
 
 // The editor's model of a level, and conversion to and from the text maps and options in levels.ts.
