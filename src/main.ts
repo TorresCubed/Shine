@@ -130,8 +130,9 @@ const play = (index: number) => {
   hideHint();
   playing = true;
   markStarted();
-  leaving = false;
-  leaveTo(index, TRANSITION.levelFadeOutMs, TRANSITION.levelFadeInMs, true);
+  // No fade out: the menu was covering the level, and fading out from under it would show the level
+  // first. startLevel cuts to black (cancelling any fade under way) and fades the new level in.
+  startLevel(index, TRANSITION.levelFadeInMs, true);
 };
 
 // Finishing a level saves it, as soon as you reach the exit. And walking into the dark for a while
