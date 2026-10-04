@@ -1,4 +1,4 @@
-import { PLAYER, MIRROR, INPUT } from '../core/consts';
+import { PLAYER, MIRROR, INPUT, SPRITES } from '../core/consts';
 import { level, player, gameState, lightState, allDoorLeaves, shine } from '../core/state';
 import type { FloorLight, GridPos, LeverState, LightKind, MirrorState, Point } from '../core/types';
 import { cellAt, cellCenter, insideWalls, sameCell, segmentsCross, wrapAngle } from '../core/util';
@@ -43,6 +43,16 @@ const pickUpLight = ({ list, i }: { list: FloorLight[]; i: number }) => {
   list.splice(i, 1);
 };
 
+// A flashlight goes down where it was in hand sideways (the sprite holds it off-centre), so its beam
+// runs along the same line and still lights what it lit. Not into a wall.
+const dropSpot = (kind: LightKind): Point => {
+  if (kind !== 'flashlight') return { x: player.x, y: player.y };
+  const sprite = SPRITES.player.flashlight;
+  const side = (sprite.light.y - sprite.anchor.y) * SPRITES.playerScale;
+  const spot = { x: player.x - Math.sin(player.aimAngle) * side, y: player.y + Math.cos(player.aimAngle) * side };
+  return insideWalls(spot, level.walls) ? { x: player.x, y: player.y } : spot;
+};
+
 // Puts down the light in hand, where you stand, and takes out the pocketed one. Never on a plate (or
 // every puzzle would be "put it on the plate"), a mirror or a lever.
 const dropLight = () => {
@@ -53,8 +63,7 @@ const dropLight = () => {
     kind: lightState.held.value,
     gridX: player.gridX,
     gridY: player.gridY,
-    x: player.x,
-    y: player.y,
+    ...dropSpot(lightState.held.value),
     aimAngle: player.aimAngle,
   });
   lightState.held.value = takeFromPocket();
