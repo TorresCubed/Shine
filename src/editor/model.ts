@@ -21,6 +21,8 @@ export const TOOLS = [
   ['plate', 'Plate'],
   ['lever', 'Lever'],
   ['door', 'Door'],
+  ['secretWall', 'Secret wall'],
+  ['trinket', 'Trinket'],
 ] as const;
 export const TRY_TOOLS = [
   ['tryFlashlight', 'Flashlight'],

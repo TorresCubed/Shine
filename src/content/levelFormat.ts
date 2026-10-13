@@ -1,4 +1,16 @@
-import type { Door, DoorLeaf, FloorLight, GridPos, Lamp, Level, Lever, LightKind, Mirror, Wall } from '../core/types';
+import type {
+  Door,
+  DoorLeaf,
+  FloorLight,
+  GridPos,
+  Lamp,
+  Level,
+  Lever,
+  LightKind,
+  Mirror,
+  SecretWall,
+  Wall,
+} from '../core/types';
 import { GRID_SIZE, MIRROR } from '../core/consts';
 import { wrapAngle } from '../core/util';
 
@@ -8,6 +20,7 @@ import { wrapAngle } from '../core/util';
 //   'F' flashlight to be found   'C' candle on the floor, lit
 //   '|' mirror (see the `mirrors` option)
 //   '1'-'9' the trigger (plate or lever) for door n   'P' same as '1'
+//   '%' secret wall (a ghost you can walk through while two lights reach it)   '*' trinket (the secret)
 // `doors`, keyed by trigger number: the edges each door sits on, e.g.
 //   { 2: { between: '3,4 3,5', opens: 'up' } } (opens into 3,4), or between: ['3,4 3,5', '4,4 4,5'] for
 //   a wider door. Each leaf hinges at the end against a wall unless `hinge` says. `kind: 'locked'` or
@@ -96,6 +109,8 @@ export const fromMap = (name: string, map: string[], options: LevelOptions): Lev
   const mirrors: Mirror[] = [];
   const pickups: FloorLight[] = [];
   const startDropped: FloorLight[] = [];
+  const secretWalls: SecretWall[] = [];
+  let trinket: GridPos | null = null;
   const triggers = new Map<number, GridPos>();
   let start: GridPos | undefined;
   let goal: GridPos | undefined;
@@ -126,6 +141,16 @@ export const fromMap = (name: string, map: string[], options: LevelOptions): Lev
           break;
         case 'C':
           startDropped.push({ kind: 'candle', ...cell, ...centre, aimAngle: 0 });
+          break;
+        case '%': {
+          const wall = { x: x * GRID_SIZE, y: y * GRID_SIZE, w: GRID_SIZE, h: GRID_SIZE };
+          walls.push(wall);
+          secretWalls.push({ ...cell, wall });
+          break;
+        }
+        case '*':
+          check(!trinket, `a level has one trinket: there's another at ${x},${y}`);
+          trinket = cell;
           break;
         case 'P':
           triggers.set(1, cell);
@@ -207,6 +232,8 @@ export const fromMap = (name: string, map: string[], options: LevelOptions): Lev
     levers,
     pickups,
     startDropped,
+    secretWalls,
+    trinket,
     width: Math.max(...map.map(row => row.length)),
     height: map.length,
     startHeld: options.held === undefined ? 'candle' : options.held,

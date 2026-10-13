@@ -39,6 +39,7 @@ export interface LightGroup {
   spill?: boolean; // spill, not the light itself
   mirrorSeg?: number; // off a mirror: the scene segment it last came off
   flame?: number; // a flame's flicker seed, shared by its reflections (set by the renderer)
+  source?: number; // which light it came from, shared by its reflections (set by the renderer)
   penumbras?: Penumbra[]; // soft shadow edges, drawn only
 }
 

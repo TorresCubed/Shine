@@ -82,8 +82,8 @@ let dustFor: Wall[] | null = null;
 export const updateDust = (dt: number) => {
   const w = worldCanvas.width;
   const h = worldCanvas.height;
-  if (dustFor !== level.walls) {
-    dustFor = level.walls;
+  if (dustFor !== level.allWalls) {
+    dustFor = level.allWalls;
     dust = Array.from({ length: Math.round(((w * h) / (GRID_SIZE * GRID_SIZE)) * DUST.perCell) }, () => ({
       x: Math.random() * w,
       y: Math.random() * h,

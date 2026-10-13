@@ -7,40 +7,46 @@ import { wallImage, dimCopy } from './art';
 
 // Walls are autotiled from walls.png: each wall cell gets the tile's middle, with its rim only on sides
 // facing floor, so neighbours join into one wall. Corners are an outer corner, a continuing edge, or
-// an inner corner. Baked once per level, with a fog copy.
+// an inner corner. Baked once per level, with a fog copy, secret walls and all (floor.ts fades those).
 const WALL_RIM = 4; // how deep the rim is in walls.png, in its pixels
 export const wallArt = document.createElement('canvas');
 export const dimWallArt = document.createElement('canvas');
-// The walls as a mask (for trimming lit faces) and as a grid of cells (1 = wall, row by row).
+// The walls as a mask (for trimming lit faces), and the solid ones as a grid of cells (1 = wall, row by row).
 export const wallMask = document.createElement('canvas');
 let wallCells = new Uint8Array(0);
+let wallCellsFor: Wall[] | null = null;
 let wallArtFor: Wall[] | null = null;
 
-// Whether a cell is wall (outside the level counts).
+// Whether a cell is solid wall (outside the level counts).
 export const isWallCell = (gx: number, gy: number) => {
   const cols = worldCanvas.width / GRID_SIZE;
   const rows = worldCanvas.height / GRID_SIZE;
+  if (wallCellsFor !== level.walls) {
+    wallCellsFor = level.walls;
+    wallCells = new Uint8Array(cols * rows);
+    for (let y = 0; y < rows; y++)
+      for (let x = 0; x < cols; x++)
+        wallCells[y * cols + x] = insideWalls(cellCenter({ gridX: x, gridY: y }), level.walls) ? 1 : 0;
+  }
   return gx < 0 || gy < 0 || gx >= cols || gy >= rows || wallCells[gy * cols + gx] === 1;
 };
 
 export const ensureWallArt = () => {
-  if (wallArtFor === level.walls) return;
-  wallArtFor = level.walls;
+  if (wallArtFor === level.allWalls) return;
+  wallArtFor = level.allWalls;
   const cols = worldCanvas.width / GRID_SIZE;
   const rows = worldCanvas.height / GRID_SIZE;
   const isWall = (gx: number, gy: number) => {
     if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) return true; // no rim facing out of the level
-    return insideWalls(cellCenter({ gridX: gx, gridY: gy }), level.walls);
+    return insideWalls(cellCenter({ gridX: gx, gridY: gy }), level.allWalls);
   };
 
   wallArt.width = dimWallArt.width = wallMask.width = worldCanvas.width;
   wallArt.height = dimWallArt.height = wallMask.height = worldCanvas.height;
   const m = wallMask.getContext('2d')!;
   m.fillStyle = '#fff';
-  for (const w of level.walls) m.fillRect(w.x, w.y, w.w, w.h);
-  wallCells = new Uint8Array(cols * rows);
-  for (let gy = 0; gy < rows; gy++)
-    for (let gx = 0; gx < cols; gx++) wallCells[gy * cols + gx] = isWall(gx, gy) ? 1 : 0;
+  for (const w of level.allWalls) m.fillRect(w.x, w.y, w.w, w.h);
+  wallCellsFor = null; // (the level may be a new size)
   const c = wallArt.getContext('2d')!;
   c.imageSmoothingEnabled = false;
   const n = wallImage.width;

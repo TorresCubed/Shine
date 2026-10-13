@@ -41,6 +41,12 @@ export interface Mirror extends GridPos {
   control: 'fixed' | 'turnable' | number;
 }
 
+// A wall cell that fades to a ghost you can walk through while two lights reach it (a reflection counts
+// as a light of its own). `wall`: its rect, one of the level's walls (never merged) while it's solid.
+export interface SecretWall extends GridPos {
+  wall: Wall;
+}
+
 // A lever: toggles its door (if any) and turns its mirrors.
 export interface Lever extends GridPos {
   id: number;
@@ -75,6 +81,8 @@ export interface Level {
   mirrors: Mirror[];
   levers: Lever[];
   pickups: FloorLight[]; // lights lying switched off, to be found
+  secretWalls: SecretWall[];
+  trinket: GridPos | null; // the level's secret, kept behind a secret wall
   startDropped: FloorLight[]; // lights already on the floor, lit
   startHeld: LightKind | null;
   startStowed: LightKind[];
@@ -103,6 +111,11 @@ export type MirrorState = Mirror & {
   seenStep: number; // as last seen: what fog shows
   everSeen: boolean; // once seen, you see it turn whatever turns it, even in fog
   turned: number; // steps turned since the level began, never wrapping (a wheel shows this)
+};
+export type SecretWallState = SecretWall & {
+  solid: boolean; // what collision and light go by
+  shown: number; // how far it shows as a ghost (0 solid, 1 a ghost; one light only shimmers it)
+  seenShown: number; // as last seen: what fog shows
 };
 export type LeverState = Lever & {
   on: boolean;

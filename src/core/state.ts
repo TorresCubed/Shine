@@ -9,6 +9,7 @@ import type {
   LightKind,
   Mirror,
   MirrorState,
+  SecretWallState,
   Wall,
 } from './types';
 import { cellCenter, doorLeaves } from './util';
@@ -43,11 +44,15 @@ export const camera = {
 export const gameState = {
   status: signal<'playing' | 'won'>('playing'),
   startedAt: 0, // performance.now() clock
+  trinketTaken: false, // the level's trinket picked up this try
 };
 
 // The level being played, as loadLevel sets it up.
 export const level = {
-  walls: [] as Wall[],
+  walls: [] as Wall[], // the solid ones: a secret wall is left out while it's a ghost
+  allWalls: [] as Wall[], // every wall, secret ones solid or not (what the wall art shows)
+  secretWalls: [] as SecretWallState[],
+  trinket: null as GridPos | null, // until taken
   doors: [] as DoorState[],
   mirrors: [] as MirrorState[],
   levers: [] as LeverState[],
@@ -98,6 +103,9 @@ export const loadLevel = (source: Level) => {
   // Typed, so a field added to `level` and forgotten here is an error, not left over from the last level.
   const fresh: typeof level = {
     walls: source.walls,
+    allWalls: source.walls,
+    secretWalls: source.secretWalls.map(s => ({ ...s, solid: true, shown: 0, seenShown: 0 })),
+    trinket: source.trinket,
     doors: source.doors.map(d => ({
       ...d,
       openAmount: 0,
@@ -128,5 +136,6 @@ export const loadLevel = (source: Level) => {
   lightState.pickups = source.pickups.map(p => ({ ...p }));
   gameState.status.value = 'playing';
   gameState.startedAt = performance.now();
+  gameState.trinketTaken = false;
   shines.length = 0;
 };

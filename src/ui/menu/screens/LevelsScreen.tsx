@@ -1,5 +1,12 @@
 import { useReducer } from 'preact/hooks';
-import { isCompleted, isPlayed, completedCount, resetProgress } from '../../../game/progress';
+import {
+  isCompleted,
+  isPlayed,
+  completedCount,
+  resetProgress,
+  isSecretFound,
+  secretsFoundCount,
+} from '../../../game/progress';
 import { useGame } from '../../GameContext';
 import { cx } from '../../cx';
 import { MenuItem, BackButton } from '../MenuItem';
@@ -9,9 +16,10 @@ export const LevelsScreen = () => {
   const { play, levelCount } = useGame();
   const [, refresh] = useReducer((n: number) => n + 1, 0); // progress lives in localStorage
   const done = completedCount();
+  const secrets = secretsFoundCount();
 
   const reset = () => {
-    if (!confirm("Forget which levels you've finished?")) return;
+    if (!confirm("Forget which levels you've finished and the secrets you've found?")) return;
     resetProgress();
     refresh(0);
   };
@@ -21,6 +29,7 @@ export const LevelsScreen = () => {
       <h2>Levels</h2>
       <p className="muted">
         {done} of {levelCount} finished
+        {secrets > 0 && ` · ${secrets} ${secrets === 1 ? 'secret' : 'secrets'} found`}
       </p>
       <div className="level-grid">
         {Array.from({ length: levelCount }, (_, i) => {
@@ -31,6 +40,11 @@ export const LevelsScreen = () => {
             <MenuItem key={n} className={cx('level-tile', state)} title={levelLabel(i)} onClick={() => play(i)}>
               <span className="level-number">{n}</span>
               {state === 'done' && <span className="level-check">✓</span>}
+              {isSecretFound(n) && (
+                <span className="level-secret" title="Secret found">
+                  ✦
+                </span>
+              )}
             </MenuItem>
           );
         })}

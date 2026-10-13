@@ -1,6 +1,6 @@
 import { cellCenter, doorLeaves } from '../core/util';
-import type { LeverState, Wall } from '../core/types';
-import { GRID_SIZE, ANIMATION, LIT_SURFACES, MIRROR } from '../core/consts';
+import type { LeverState, SecretWallState, Wall } from '../core/types';
+import { GRID_SIZE, ANIMATION, LIT_SURFACES, MIRROR, SECRET } from '../core/consts';
 import { level, lightState } from '../core/state';
 import { worldCanvas, fitToWorld } from './canvases';
 import { frameTime } from './frame';
@@ -84,6 +84,30 @@ const drawDoors = (c: CanvasRenderingContext2D, dim: boolean) => {
   }
 };
 
+// Secret walls fading to ghosts: in each one's cell, `under` paints what shows through (the floor), then
+// the wall art goes over it, more see-through the further it's faded (`amount` 0-1).
+const drawGhostWalls = (
+  c: CanvasRenderingContext2D,
+  art: HTMLCanvasElement,
+  amount: (s: SecretWallState) => number,
+  under: (x: number, y: number) => void,
+) => {
+  for (const s of level.secretWalls) {
+    const t = amount(s);
+    if (t <= 0) continue;
+    const x = s.gridX * GRID_SIZE;
+    const y = s.gridY * GRID_SIZE;
+    c.save();
+    c.beginPath();
+    c.rect(x, y, GRID_SIZE, GRID_SIZE);
+    c.clip();
+    under(x, y);
+    c.globalAlpha = 1 - t * (1 - SECRET.ghostAlpha);
+    c.drawImage(art, x, y, GRID_SIZE, GRID_SIZE, x, y, GRID_SIZE, GRID_SIZE);
+    c.restore();
+  }
+};
+
 // The remembered level, cached until its layout or anything seen changes (doors and mirrors as last
 // seen, so fog never shows a change you didn't see). dimMarks is everything but the floorboards, all
 // fog shows with the fog floor off (FOG.visibility 0); dimFloor is the floorboards with that on top.
@@ -99,7 +123,8 @@ export const ensureDimFloor = () => {
     worldCanvas.height,
     level.start,
     level.goal,
-    level.walls,
+    level.allWalls,
+    level.secretWalls.map(s => s.seenShown),
     level.doors.map(d => d.seenOpenAmount),
     level.lamps,
     lightState.pickups,
@@ -112,6 +137,13 @@ export const ensureDimFloor = () => {
   dimMarksCanvas.height = dimFloorCanvas.height = worldCanvas.height;
   drawFloorMarks(dimMarksCtx, true);
   dimMarksCtx.drawImage(dimWallArt, 0, 0);
+  // (Cleared to nothing, so the fog floor shows through.)
+  drawGhostWalls(
+    dimMarksCtx,
+    dimWallArt,
+    s => s.seenShown,
+    (x, y) => dimMarksCtx.clearRect(x, y, GRID_SIZE, GRID_SIZE),
+  );
   dimFloorCtx.fillStyle = dimFloorCtx.createPattern(dimFloorTile, 'repeat')!;
   dimFloorCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
   dimFloorCtx.drawImage(dimMarksCanvas, 0, 0);
@@ -134,10 +166,11 @@ export const ensureLitArt = () => {
     level.doors.map(d => [d.openAmount, d.triggerOn, d.opened]),
     level.mirrors.map(m => m.shownStep),
     level.levers.map(l => [l.on, leverFlicking(l)]),
+    level.secretWalls.map(s => s.shown),
   ]);
-  if (key === litArtKey && litArtWalls === level.walls) return;
+  if (key === litArtKey && litArtWalls === level.allWalls) return;
   litArtKey = key;
-  litArtWalls = level.walls;
+  litArtWalls = level.allWalls;
   const c = litArtCtx;
   const w = worldCanvas.width;
   const h = worldCanvas.height;
@@ -152,6 +185,19 @@ export const ensureLitArt = () => {
   c.fillRect(0, 0, w, h);
   c.globalCompositeOperation = 'source-over';
   c.drawImage(wallArt, 0, 0);
+  drawGhostWalls(
+    c,
+    wallArt,
+    s => s.shown,
+    (x, y) => {
+      c.fillStyle = c.createPattern(floorTile, 'repeat')!;
+      c.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+      c.globalCompositeOperation = 'multiply';
+      c.fillStyle = LIT_SURFACES.floorTint;
+      c.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+      c.globalCompositeOperation = 'source-over';
+    },
+  );
   drawDoors(c, false);
 };
 
@@ -162,4 +208,13 @@ export const drawBrightLevel = (c: CanvasRenderingContext2D) => {
   drawFloorMarks(c, false);
   ensureWallArt();
   c.drawImage(wallArt, 0, 0);
+  drawGhostWalls(
+    c,
+    wallArt,
+    s => s.shown,
+    (x, y) => {
+      c.fillStyle = c.createPattern(floorTile, 'repeat')!;
+      c.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+    },
+  );
 };

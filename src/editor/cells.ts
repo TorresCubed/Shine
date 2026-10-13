@@ -39,8 +39,16 @@ export const drawCell = (c: CanvasRenderingContext2D, x: number, y: number, cell
   const py = y * ed.cs;
   const mx = px + ed.cs / 2;
   const my = py + ed.cs / 2;
-  c.fillStyle = cell.ch === '#' ? '#2b2520' : '#5c4a36';
+  c.fillStyle = cell.ch === '#' || cell.ch === '%' ? '#2b2520' : '#5c4a36';
   c.fillRect(px, py, ed.cs, ed.cs);
+  if (cell.ch === '%') {
+    // A secret wall: a wall, dashed round.
+    c.strokeStyle = '#b48cff';
+    c.lineWidth = 2;
+    c.setLineDash([4, 3]);
+    c.strokeRect(px + 3, py + 3, ed.cs - 6, ed.cs - 6);
+    c.setLineDash([]);
+  }
   c.lineWidth = 3;
   const label = (text: string, color: string) => {
     c.fillStyle = color;
@@ -79,6 +87,7 @@ export const drawCell = (c: CanvasRenderingContext2D, x: number, y: number, cell
     if (!side) label('!', '#e06a55');
   } else if (cell.ch === 'F') drawFlashlightGlyph(c, mx, my, 0, false);
   else if (cell.ch === 'C') drawCandleGlyph(c, mx, my);
+  else if (cell.ch === '*') label('✦', '#f5c542');
   else if (cell.mirror) {
     const key = `${x},${y}`;
     const previewed = ed.preview?.[key] !== undefined;

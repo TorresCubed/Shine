@@ -2,7 +2,7 @@ import { cellCenter } from '../core/util';
 import { insideAny, brightnessAt } from '../light/brightness';
 import type { LightGroup } from '../light/rayTracer';
 import type { Point } from '../core/types';
-import { SPRITES, PLATE } from '../core/consts';
+import { GRID_SIZE, SPRITES, PLATE } from '../core/consts';
 import { level, player, lightState } from '../core/state';
 import { worldCtx } from './canvases';
 import { frameTime, viewMode } from './frame';
@@ -48,6 +48,24 @@ export const drawAwakePlates = (view: Point[][]) => {
   c.globalAlpha = 1;
 };
 
+// The trinket: a stand-in locket until it has art.
+const drawTrinket = (at: Point) => {
+  const c = worldCtx;
+  const r = GRID_SIZE * 0.12;
+  c.strokeStyle = '#7a5a22';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.arc(at.x, at.y - r * 1.6, r * 0.45, 0, Math.PI * 2); // the loop it hangs from
+  c.stroke();
+  c.fillStyle = '#d9b55a';
+  c.beginPath();
+  c.arc(at.x, at.y, r, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.fillStyle = '#fff3c4';
+  c.fillRect(Math.round(at.x - r * 0.45), Math.round(at.y - r * 0.45), 3, 3); // a glint
+};
+
 // Dropped lights in sight, unfound ones lit and in sight (at full art, to stand out), then the player.
 export const drawObjects = (view: Point[][], groups: LightGroup[]) => {
   for (const d of lightState.dropped) {
@@ -57,6 +75,10 @@ export const drawObjects = (view: Point[][], groups: LightGroup[]) => {
   for (const p of lightState.pickups) {
     if (viewMode === 'normal' && !(insideAny(p, view) && brightnessAt(p, groups) > 0)) continue;
     drawObject(worldCtx, p.kind, p.x, p.y, p.aimAngle, false);
+  }
+  if (level.trinket) {
+    const at = cellCenter(level.trinket);
+    if (viewMode !== 'normal' || (insideAny(at, view) && brightnessAt(at, groups) > 0)) drawTrinket(at);
   }
   const spriteKind = lightState.held.value ?? 'empty';
   const { anchor } = SPRITES.player[spriteKind];

@@ -15,7 +15,7 @@ import { fear } from './game/movement';
 import { mountUi } from './ui/App';
 import { open, close, isMenuOpen, onEscape, markStarted, showHint, hideHint, showLevelCard } from './ui/store';
 import { LEVEL_HINTS } from './content/help';
-import { markCompleted, markPlayed, lastPlayed } from './game/progress';
+import { markCompleted, markPlayed, lastPlayed, markSecretFound } from './game/progress';
 import { playSplash, skipSplash, splashPlaying, hideSplash } from './ui/splash/state';
 
 const resize = () => {
@@ -132,9 +132,10 @@ const play = (index: number) => {
   startLevel(index, TRANSITION.levelFadeInMs, true);
 };
 
-// Saves a level as finished at the exit, and when you're stranded in the dark for a while, hints at
-// restarting (once per try).
+// Saves a level as finished at the exit, and its secret when found; when you're stranded in the dark
+// for a while, hints at restarting (once per try).
 let wasWon = false;
+let wasTaken = false;
 let strandedMs = 0;
 let strandHinted = false;
 let lastWatch = 0;
@@ -151,6 +152,11 @@ const watchPlay = (now: number) => {
     }
   }
   wasWon = won;
+  if (gameState.trinketTaken && !wasTaken) {
+    if (playing && !playtest) markSecretFound(levelIndex + 1);
+    showHint({ both: 'You found a secret.' }, 4000);
+  }
+  wasTaken = gameState.trinketTaken;
   const stuck =
     playing &&
     !won &&

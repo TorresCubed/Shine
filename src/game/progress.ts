@@ -1,8 +1,8 @@
-// Levels played and finished (numbered from 1) and the last played, in localStorage. Every read and
-// write is guarded: without storage, progress just isn't kept.
+// Levels played and finished (numbered from 1), the last played, and those whose secret you've found, in
+// localStorage. Every read and write is guarded: without storage, progress just isn't kept.
 
 const KEY = 'shine-progress';
-type Progress = { completed: number[]; played: number[]; last: number | null };
+type Progress = { completed: number[]; played: number[]; last: number | null; secrets: number[] };
 
 const numbers = (list: unknown) => (Array.isArray(list) ? (list.filter(Number.isInteger) as number[]) : []);
 const read = (): Progress => {
@@ -13,12 +13,12 @@ const read = (): Progress => {
       const last = Number.isInteger(p.last) ? p.last : null;
       // (Saved before `played` existed: finished levels and the last were played.)
       const played = p.played ? numbers(p.played) : [...completed, ...(last !== null ? [last] : [])];
-      return { completed, played, last };
+      return { completed, played, last, secrets: numbers(p.secrets) };
     }
   } catch {
     /* no storage, or nothing usable in it */
   }
-  return { completed: [], played: [], last: null };
+  return { completed: [], played: [], last: null, secrets: [] };
 };
 const write = (p: Progress) => {
   try {
@@ -47,6 +47,14 @@ export const markPlayed = (levelNumber: number) => {
   write(progress);
 };
 export const resetProgress = () => {
-  progress = { completed: [], played: [], last: null };
+  progress = { completed: [], played: [], last: null, secrets: [] };
+  write(progress);
+};
+
+export const isSecretFound = (levelNumber: number) => progress.secrets.includes(levelNumber);
+export const secretsFoundCount = () => progress.secrets.length;
+export const markSecretFound = (levelNumber: number) => {
+  if (isSecretFound(levelNumber)) return;
+  progress = { ...progress, secrets: [...progress.secrets, levelNumber].sort((a, b) => a - b) };
   write(progress);
 };

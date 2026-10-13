@@ -2,6 +2,7 @@ import { tryMove } from '../game/movement';
 import { updateAim } from '../game/aim';
 import { updateMirrors } from '../game/mirrors';
 import { updateDoors } from '../game/doors';
+import { updateSecrets } from '../game/secrets';
 import { getScene } from '../light/scene';
 import type { LightGroup } from '../light/rayTracer';
 import type { LightKind } from '../core/types';
@@ -63,6 +64,7 @@ export const draw = (now: number) => {
   const view = computeView(scene);
   perfMark('view');
   updateDoors(groups, view, dt);
+  updateSecrets(groups, view, dt);
   for (const m of level.mirrors)
     if (mirrorSeen(m, groups, view)) {
       m.seenStep = m.shownStep;

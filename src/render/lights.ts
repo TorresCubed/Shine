@@ -73,7 +73,7 @@ export const castLights = (scene: Scene, now: number) => {
 
   const groups: LightGroup[] = [];
   let rayCount = 0;
-  for (const s of sources) {
+  sources.forEach((s, source) => {
     const radius = Math.max(1, s.radius);
     const result =
       s.kind === 'flashlight'
@@ -89,9 +89,12 @@ export const castLights = (scene: Scene, now: number) => {
             true,
             !skip.has('soft'),
           );
-    if (s.kind !== 'flashlight') for (const g of result.groups) g.flame = s.seed;
+    for (const g of result.groups) {
+      g.source = source;
+      if (s.kind !== 'flashlight') g.flame = s.seed;
+    }
     groups.push(...result.groups);
     rayCount += result.rayCount;
-  }
+  });
   return { groups, rayCount, lightCount: sources.length };
 };

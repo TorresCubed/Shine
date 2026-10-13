@@ -2,8 +2,8 @@
 export type Hint = { keys: string; touch: string } | { both: string };
 export const LEVEL_HINTS: Record<number, Hint> = {
   1: {
-    keys: 'WASD or the arrow keys to walk. Find the stairs down.',
-    touch: 'Drag anywhere to walk. Find the stairs down.',
+    keys: 'WASD or the arrow keys to walk. Find the stairs up.',
+    touch: 'Drag anywhere to walk. Find the stairs up.',
   },
   4: { both: 'Light a plate and its door opens.' },
   5: {

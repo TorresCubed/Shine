@@ -7,7 +7,7 @@ import type { Door, LightKind, Mirror } from '../core/types';
 export type Control = Mirror['control'];
 export type Aim = Side;
 export type DoorKind = Door['kind'];
-// ch: '#' '.' 'S' 'G' 'L' 'F' 'C', 'M' for a mirror, '1'-'9' a trigger (plate or lever).
+// ch: '#' '.' 'S' 'G' 'L' 'F' 'C' '%' '*', 'M' for a mirror, '1'-'9' a trigger (plate or lever).
 export type Cell = { ch: string; mirror?: { step: number; control: Control } };
 // A door: the edges it sits on ("x,y x,y"), the way it opens, and optionally its hinge end.
 type DocDoor = { edges: string[]; opens: Side; hinge?: Side };

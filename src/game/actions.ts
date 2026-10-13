@@ -3,6 +3,7 @@ import { level, player, gameState, lightState, allDoorLeaves, shine } from '../c
 import type { FloorLight, GridPos, LeverState, LightKind, MirrorState, Point } from '../core/types';
 import { cellAt, cellCenter, insideWalls, sameCell, segmentsCross, wrapAngle } from '../core/util';
 import { turnMirror } from './mirrors';
+import { isSecretCell } from './secrets';
 
 // Takes `kind` into hand; whatever was in hand goes in your pocket.
 const takeIntoHand = (kind: LightKind) => {
@@ -50,15 +51,16 @@ const dropSpot = (kind: LightKind): Point => {
   const sprite = SPRITES.player.flashlight;
   const side = (sprite.light.y - sprite.anchor.y) * SPRITES.playerScale;
   const spot = { x: player.x - Math.sin(player.aimAngle) * side, y: player.y + Math.cos(player.aimAngle) * side };
-  return insideWalls(spot, level.walls) ? { x: player.x, y: player.y } : spot;
+  return insideWalls(spot, level.allWalls) ? { x: player.x, y: player.y } : spot;
 };
 
 // Puts down the light in hand, where you stand, and takes out the pocketed one. Never on a plate (or
-// every puzzle would be "put it on the plate"), a mirror or a lever.
+// every puzzle would be "put it on the plate"), a mirror, a lever or in a secret wall.
 const dropLight = () => {
   if (!lightState.held.value) return;
   if (level.doors.some(d => d.kind !== 'lever' && sameCell(d.trigger, player))) return;
   if (level.mirrors.some(m => sameCell(m, player)) || level.levers.some(l => sameCell(l, player))) return;
+  if (isSecretCell(player)) return;
   lightState.dropped.push({
     kind: lightState.held.value,
     gridX: player.gridX,

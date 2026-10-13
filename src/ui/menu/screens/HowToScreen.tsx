@@ -2,7 +2,7 @@ import { CONTROLS } from '../../../content/help';
 import { BackButton } from '../MenuItem';
 
 const RULES = [
-  'Find the stairs down out of each room.',
+  'Find the stairs up out of each room.',
   "You're afraid of the dark: carrying a light, you can go anywhere, but put it down and you can only walk where it's lit.",
   "Light opens doors: shine on a door's plate and it opens, for as long as the light stays on it.",
   'Lights you put down keep shining, so you can be in two places at once.',

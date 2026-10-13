@@ -63,6 +63,13 @@ export const paint = (x: number, y: number, erase: boolean) => {
     case 'candle':
       c.ch = 'C';
       break;
+    case 'secretWall':
+      c.ch = '%';
+      break;
+    case 'trinket':
+      clearChar('*');
+      c.ch = '*';
+      break;
     case 'mirror':
       c.ch = 'M';
       c.mirror = { ...ed.mirrorDefaults };

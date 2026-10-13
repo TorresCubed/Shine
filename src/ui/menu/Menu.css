@@ -85,6 +85,7 @@
 }
 .level-number { font: 700 22px var(--display); color: var(--gold-dim); }
 .level-check { position: absolute; top: 3px; right: 6px; color: #7cc47a; font-size: 13px; }
+.level-secret { position: absolute; top: 3px; left: 6px; color: var(--gold); font-size: 12px; }
 .level-tile.done .level-number { color: var(--gold); }
 /* Never played: fogged until hovered. */
 .level-tile.unplayed { background: rgba(255, 255, 255, 0.015); border-color: rgba(255, 255, 255, 0.06); }

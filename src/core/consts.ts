@@ -156,6 +156,15 @@ export const PLATE = {
   },
 };
 
+// Secret walls: a ghost while SECRET.lights lights each reach a face to `threshold`.
+export const SECRET = {
+  lights: 2,
+  threshold: 0.15, // each light's brightness just off a face
+  ghostAlpha: 0.3, // the wall art's opacity as a ghost
+  shimmer: 0.12, // how far one light alone fades it toward a ghost: a hint something's there
+  fadeMs: 400,
+};
+
 export const INPUT = {
   tapReach: 1.5 * GRID_SIZE, // no wall in between
   tapPlayerRadius: 0.4 * GRID_SIZE, // tap self: pickup/drop

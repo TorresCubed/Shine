@@ -48,14 +48,17 @@ const insidePolygon = (p: Point, poly: Point[]) => {
 
 export const insideAny = (p: Point, polys: Point[][]) => polys.some(poly => insidePolygon(p, poly));
 
+// How bright group `g` alone is at `p`.
+export const groupBrightnessAt = (p: Point, g: LightGroup) => {
+  if (!insideAny(p, g.polys)) return 0;
+  const distance = Math.hypot(p.x - g.origin.x, p.y - g.origin.y);
+  return falloffAt(distance / g.radius) * fadeAt(p, g) * (g.strength ?? 1);
+};
+
 // Total brightness at `p` from every group reaching it (light adds).
 export const brightnessAt = (p: Point, groups: LightGroup[]) => {
   let total = 0;
-  for (const g of groups) {
-    if (!insideAny(p, g.polys)) continue;
-    const distance = Math.hypot(p.x - g.origin.x, p.y - g.origin.y);
-    total += falloffAt(distance / g.radius) * fadeAt(p, g) * (g.strength ?? 1);
-  }
+  for (const g of groups) total += groupBrightnessAt(p, g);
   return total;
 };
 
